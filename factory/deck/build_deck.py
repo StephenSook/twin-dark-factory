@@ -243,7 +243,7 @@ svg .small {{ font: 600 26px Figtree, sans-serif; fill: #4a4560; }}
 svg .dot {{ font: 800 26px Figtree, sans-serif; fill: #fff; }}
 .check {{ font-size: 32px; line-height: 1.9; }}
 code {{ font-family: 'JetBrains Mono', monospace; background: #fff; border: 2px solid {INK}; border-radius: 10px; padding: 4px 12px; font-size: 26px; }}
-img.hero {{ position: absolute; right: 90px; bottom: 60px; width: 620px; }}
+img.hero {{ position: absolute; right: 120px; bottom: 30px; width: 400px; }}
 img.corner {{ position: absolute; right: 150px; bottom: 90px; width: 440px; }}
 img.icon {{ display: block; width: 150px; height: 150px; object-fit: contain; margin: 0 auto 14px; }}
 svg .bt {{ font: 800 36px 'Bricolage Grotesque', sans-serif; fill: {INK}; }}
