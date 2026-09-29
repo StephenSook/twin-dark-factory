@@ -44,7 +44,8 @@ plus every earlier failure and the revision that fixed it. Report the counts for
 own stages separately from the counts for the next stage (collected, passed, failed as expected,
 not run), so nobody mistakes one for the other. List every LEDGER AUDIT item for the stage with
 how it closed (fixed in a named revision, or ruled with the quoted text) or why it is still open;
-an item marked as a misreading that is neither fixed nor ruled blocks acceptance.
+a misreading that comes with a concrete input where the product's behaviour would differ, and that
+is neither fixed nor ruled, blocks acceptance. Other items never block.
 
 Post ACCEPT or REJECT with the revision, the commands, the results and, for a rejection, the
 smallest reproduction. Tell @coordinator and the owning seat. Keep a rejection open until a new
