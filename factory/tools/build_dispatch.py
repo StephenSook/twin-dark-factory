@@ -17,8 +17,9 @@ def main():
     args = sys.argv[1:]
     track, run = args[0], args[1]
     design = args[args.index("--design") + 1] if "--design" in args else None
-    text = (HERE.parent / "dispatch" / "template.md").read_text()
-    if design is None:
+    template = args[args.index("--template") + 1] if "--template" in args else "template.md"
+    text = (HERE.parent / "dispatch" / template).read_text()
+    if design is None and "Visual direction" in text:
         start = text.index("Visual direction")
         end = text.index("Folder rules:")
         text = text[:start] + text[end:]

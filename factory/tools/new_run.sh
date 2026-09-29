@@ -9,7 +9,8 @@ W=/home/ubuntu/work
 R=$W/band-work/$NAME
 [ -e "$R" ] && { echo "refusing: $R already exists"; exit 1; }
 mkdir -p "$R/mandates" "$W/band-work/checks/$NAME"
-cp "$W"/factory/mandates/*.md "$R/mandates/"
+MANDATES=${MANDATES:-$W/factory/mandates}   # the baseline run uses factory/baseline
+cp "$MANDATES"/*.md "$R/mandates/"
 cd "$R"
 git init -q -b main
 git config user.name "Stephen Sookra"
