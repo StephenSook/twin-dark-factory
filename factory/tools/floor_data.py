@@ -3,7 +3,7 @@
 Every number on the page is computed here from files anyone can download, so a reader can rerun
 this script and get the same numbers.
 
-  python floor_data.py <room.json> <result-repo> <out.json>
+  python floor_data.py <room.json> <result-repo or saved git log file> <out.json>
 """
 import datetime as dt
 import json
@@ -13,7 +13,12 @@ import subprocess
 import sys
 
 MENTION = re.compile(r"@\[\[([0-9a-f-]{36})\]\]")
-VERDICT = re.compile(r"\b(ACCEPT|REJECT)\b\s+`?([0-9a-f]{7,40})`?")
+# A verdict is a message whose text, after any leading @mentions, starts with the verdict word
+# and a revision (the form the mandates require). Quotes of an old verdict later in a message
+# are not verdicts.
+LEAD = re.compile(r"^(?:\s*@\[\[[0-9a-f-]{36}\]\])*[\s>*_#-]*")
+VERDICT = re.compile(r"^`?(ACCEPT|REJECT)`?\s*`?([0-9a-f]{7,40})`?")
+LINE_VERDICT = re.compile(r"(?m)^[\s>*_#-]*`?(ACCEPT|REJECT)`?\s+`?([0-9a-f]{7,40})`?")
 STAGE_PATH = re.compile(r"^stage-(\d+)/")
 
 
@@ -44,10 +49,17 @@ def delivery(meta) -> tuple[int, int]:
     return extra, failed
 
 
+GIT_FORMAT = "%H%x1f%an%x1f%aI%x1f%s"
+
+
 def git_commits(repo: pathlib.Path):
-    fmt = "%H%x1f%an%x1f%aI%x1f%s"
-    out = subprocess.run(["git", "-C", str(repo), "log", "--reverse", f"--format={fmt}", "--name-only"],
-                         capture_output=True, text=True, check=True).stdout
+    """Commits from a repository, or from a saved log file made with:
+    git log --reverse --format='%H%x1f%an%x1f%aI%x1f%s' --name-only > commits.log"""
+    if repo.is_file():
+        out = repo.read_text()
+    else:
+        out = subprocess.run(["git", "-C", str(repo), "log", "--reverse", f"--format={GIT_FORMAT}", "--name-only"],
+                             capture_output=True, text=True, check=True).stdout
     commits, cur = [], None
     for line in out.splitlines():
         if "\x1f" in line:
@@ -85,7 +97,12 @@ def main():
             continue
         body = m.get("content") or ""
         to = [names.get(x, x[:8]) for x in MENTION.findall(body)]
-        verdicts = [{"verdict": v, "rev": rev[:12]} for v, rev in VERDICT.findall(body)]
+        found = []
+        head = VERDICT.match(LEAD.sub("", body, count=1))
+        if head:
+            found.append(head.groups())
+        found += LINE_VERDICT.findall(body)
+        verdicts = [{"verdict": v, "rev": rev[:7]} for v, rev in dict.fromkeys(found)]
         events.append({
             "id": m["id"], "t": round(ts(m["insertedAt"]) - t0, 1), "from": who,
             "human": m["senderId"] in humans, "kind": kind, "to": sorted(set(to)),
@@ -103,8 +120,13 @@ def main():
         for s in c["stages"]:
             if c["by_seat"]:
                 stage_first.setdefault(s, c["t"])
-    accepts = [(e["t"], v["rev"]) for e in events for v in e["verdicts"] if v["verdict"] == "ACCEPT"]
-    rejects = [(e["t"], v["rev"], e["id"]) for e in events for v in e["verdicts"] if v["verdict"] == "REJECT"]
+    # One decision per (verdict, revision): the same verdict sent to two seats counts once.
+    first = {}
+    for e in events:
+        for v in e["verdicts"]:
+            first.setdefault((v["verdict"], v["rev"]), (e["t"], e["id"]))
+    accepts = [(t, rev) for (vd, rev), (t, _) in first.items() if vd == "ACCEPT"]
+    rejects = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "REJECT"]
     # Counts rejections that a later seat commit followed; the room shows whether that commit fixed it.
     changed = sum(1 for t, _, _ in rejects if any(c["by_seat"] and c["t"] > t for c in commits))
     handoffs = [e for e in events if not e["human"] and e["to"]]
