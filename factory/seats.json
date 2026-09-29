@@ -3,5 +3,6 @@
   "modeler":     {"harness": "Codex",       "model": "gpt-6-astra"},
   "builder":     {"harness": "Claude Code", "model": "claude-opus-5-5"},
   "surface":     {"harness": "Claude Code", "model": "claude-opus-5-5"},
-  "gatekeeper":  {"harness": "Codex",       "model": "gpt-6-astra"}
+  "gatekeeper":  {"harness": "Codex",       "model": "gpt-6-astra"},
+  "auditor":     {"harness": "OpenCode",    "model": "deepseek-ai/DeepSeek-V4-Flash (Featherless)"}
 }
