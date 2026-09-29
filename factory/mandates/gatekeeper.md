@@ -40,7 +40,9 @@ For every candidate revision, check out that exact revision in a clean copy and 
 
 On ACCEPT, commit an acceptance manifest in the verification area: the revision, the tree hash
 of the stage folder, and for every check above its command, exit status, counts and result,
-plus every earlier failure and the revision that fixed it.
+plus every earlier failure and the revision that fixed it. Report the counts for the folder's
+own stages separately from the counts for the next stage (collected, passed, failed as expected,
+not run), so nobody mistakes one for the other.
 
 Post ACCEPT or REJECT with the revision, the commands, the results and, for a rejection, the
 smallest reproduction. Tell @coordinator and the owning seat. Keep a rejection open until a new
