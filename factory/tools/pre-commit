@@ -2,7 +2,6 @@
 # Local guard for the result repository (installed as .git/hooks/pre-commit, never committed).
 # 1. Every commit is authored by a named seat or by the human owner.
 # 2. A seat may only change files inside stage folders.
-SEATS="coordinator modeler builder surface gatekeeper"
 HUMAN="Stephen Sookra"
 
 name=$(git var GIT_AUTHOR_IDENT 2>/dev/null | sed 's/ <.*//')
@@ -11,6 +10,14 @@ if [ -z "$name" ]; then
   exit 1
 fi
 [ "$name" = "$HUMAN" ] && exit 0
+
+# The seats are the mandates the human committed, read from the committed tree (an uncommitted
+# file in the working folder cannot make anyone a seat).
+SEATS=$(git ls-tree --name-only HEAD mandates/ 2>/dev/null | sed -n 's#^mandates/\(.*\)\.md$#\1#p' | tr '\n' ' ')
+if [ -z "$SEATS" ]; then
+  echo "commit refused: no committed mandates/ yet; the human's root commit must add them first." >&2
+  exit 1
+fi
 
 is_seat=0
 for s in $SEATS; do [ "$name" = "$s" ] && is_seat=1; done

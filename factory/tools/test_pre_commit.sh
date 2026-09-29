@@ -14,6 +14,17 @@ expect() { # expect <refuse|accept> <label> <git args...>
 }
 seat="-c user.name=builder -c user.email=builder@band.local"
 
+mkdir -p stage-1 && echo a > stage-1/a.py && git add stage-1/a.py
+# shellcheck disable=SC2086
+expect refuse "seat before any committed mandates" $seat
+git rm -q --cached stage-1/a.py
+mkdir mandates && for s in coordinator builder gatekeeper; do echo "Harness: x" > mandates/$s.md; done
+git add mandates && git -c user.name="Stephen Sookra" -c user.email=owner@example.com commit -q -m root
+echo "Harness: x" > mandates/mallory.md
+mkdir -p stage-1 && echo m > stage-1/m.py && git add stage-1/m.py
+expect refuse "name that is only an uncommitted mandate file" -c user.name=mallory -c user.email=m@x
+git reset -q stage-1/m.py
+
 echo x > root.txt && git add root.txt
 expect refuse "non-seat author" -c user.name=mallory -c user.email=m@x
 # shellcheck disable=SC2086
