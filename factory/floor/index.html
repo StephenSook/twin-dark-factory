@@ -73,7 +73,7 @@
       <li><strong>Verdicts</strong> are the words ACCEPT or REJECT followed by a revision hash, as the mandates require.</li>
       <li><strong>Rejections followed by a seat commit</strong> count REJECT verdicts that a later seat commit followed. Open the room message to see what that commit fixed.</li>
       <li><strong>Human messages after dispatch</strong> counts messages from any human after the first one. Zero means the run was hands off.</li>
-      <li><strong>Delivery retries and failures</strong> come from BAND's own per-recipient delivery records inside the export.</li>
+      <li><strong>Retried or undelivered messages</strong> come from BAND's own per-recipient delivery records inside the export, as of the moment it was downloaded.</li>
     </ul>
     <p>Rerun it yourself: <code>python factory/tools/floor_data.py room.json . floor.json</code></p>
   </section>

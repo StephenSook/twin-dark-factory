@@ -35,7 +35,7 @@
       [T.accepts, "ACCEPT verdicts"],
       [T.human_messages_after_dispatch, "human messages after the dispatch"],
       [`${T.seat_commits} / ${T.commits}`, "commits made by seats"],
-      [T.delivery_retries + T.delivery_failures, "BAND delivery retries and misses"],
+      [T.delivery_retries + T.delivery_failures, "BAND messages retried or undelivered at export"],
     ];
     for (const [v, label] of rows) { const s = el("div", { class: "stat" }); s.append(el("b", {}, String(v)), el("span", {}, label)); box.append(s); }
   }
