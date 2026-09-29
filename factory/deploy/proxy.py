@@ -14,6 +14,8 @@ import http.server
 import json
 import os
 import pathlib
+import posixpath
+import re
 import shlex
 import subprocess
 import sys
@@ -31,6 +33,42 @@ HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", 
        "trailer", "transfer-encoding", "upgrade", "host", "content-length"}
 state = {"last_reset": None, "last_reset_status": None}
 buckets, blk = {}, threading.Lock()
+
+
+def canonical(raw):
+    """Return (path, query) exactly as the service will route it, or None to refuse.
+
+    The test endpoints must be blocked on the path the service sees, not on the raw request line:
+    percent-encoding (/%5Ftest), repeated slashes (//_test) and dot segments (/x/../_test) all decode
+    to the same route upstream. The proxy decodes and normalizes first, checks that, and forwards
+    the normalized path so the check and the route can never disagree.
+    """
+    from urllib.parse import quote, unquote, urlsplit
+    if raw.startswith("/"):
+        # Never hand a path to urlsplit: it reads "//x/y" as host "x".
+        path, _, query = raw.partition("?")
+    else:
+        parts = urlsplit(raw)  # absolute form, "http://host/path?query"
+        path, query = parts.path or "/", parts.query
+    if re.search(r"%(2f|5c)|\\", path, re.I):
+        return None  # encoded slash or backslash: no legitimate route needs one
+    for _ in range(3):  # undo nested encoding such as %255F
+        decoded = unquote(path)
+        if decoded == path:
+            break
+        path = decoded
+    if "%" in path or any(ord(c) < 32 for c in path):
+        return None
+    trailing = path.endswith("/")
+    # normpath keeps a leading "//" (POSIX allows it), so collapse slashes after normalizing too.
+    path = re.sub(r"/+", "/", posixpath.normpath(re.sub(r"/+", "/", "/" + path)))
+    if trailing and path != "/":
+        path += "/"
+    return quote(path, safe="/-._~!$&'()*+,;=:@"), query
+
+
+def blocked(path):
+    return path.lower().rstrip("/") == "/_test" or path.lower().startswith("/_test/")
 
 
 def log(msg):
@@ -108,8 +146,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         ip = (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[0].strip()
         if self.path == "/__demo/status":
             return self.reply(200, {"reset_every_seconds": RESET_SECONDS, **state})
-        if self.path.split("?")[0].startswith("/_test"):
+        canon = canonical(self.path)
+        if canon is None:
+            return self.reply(400, {"error": "bad_path"})
+        path, query = canon
+        if blocked(path):
             return self.reply(404, {"error": "not_found", "detail": "test endpoints are closed on the public demo"})
+        target = path + ("?" + query if query else "")
         if not allowed(ip):
             return self.reply(429, {"error": "rate_limited"}, {"Retry-After": "10"})
         length = int(self.headers.get("Content-Length") or 0)
@@ -118,7 +161,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         body = self.rfile.read(length) if length else b""
         headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP}
         try:
-            c, r = upstream(self.command, self.path, body, headers)
+            c, r = upstream(self.command, target, body, headers)
         except OSError:
             return self.reply(502, {"error": "service_unavailable"})
         data = r.read()
