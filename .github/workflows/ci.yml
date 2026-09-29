@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  mandates:
+    name: Mandates are built from source and generic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Fetch the organizers' vocabulary list at the kickoff commit
+        run: |
+          git clone --quiet https://github.com/band-ai/dark-factory-wearedevs kickoff
+          git -C kickoff checkout --quiet 803560d2a678ace1414465c098eb0ab5380ffade
+      - name: Built mandates match their sources
+        run: |
+          python factory/tools/build_mandates.py
+          git diff --exit-code -- factory/mandates
+      - name: No track vocabulary in any mandate
+        run: python factory/tools/lint_mandates.py kickoff factory/mandates
+
+  guard:
+    name: Result-repository commit guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sh factory/tools/test_pre_commit.sh
+
+  secrets:
+    name: No secrets in full history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
