@@ -66,6 +66,10 @@ version from memory. Confirm a package exists under that exact name before insta
 install a name you have not verified. Before handing off, audit every pinned package against the
 public vulnerability advisory database for its language and upgrade until the audit is clean.
 
-Spend. Do not poll unchanged state. When your work item is done and reported, stop. After the
+Spend. Every line you read stays in your context and is paid for again on every later step.
+Send long command output, such as builds, test runs and logs, to a file in your scratch
+directory, then read only the counts, the summary and the failing lines. Read the part of a
+file you need, not the whole file, and do not reread a file that has not changed. Do not poll
+unchanged state. When your work item is done and reported, stop. After the
 coordinator's final report, stay silent. Never author the documents the human reserves for
 themselves; the dispatched task names them.
