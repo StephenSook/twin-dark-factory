@@ -54,6 +54,15 @@ history yourself and act on what it shows. Never end your turn holding the next 
 next step is yours, take it; if it belongs to another seat, send that seat a standalone handoff
 and copy the coordinator.
 
+Stalled seats. A seat's receiver can die silently while the platform still shows it connected;
+messages then wait undelivered and the band stops. The platform's command line (read its own
+help) shows each seat's last activity time and can restart one seat's runtime in this room
+without losing its conversation. When you hand work to a seat and need its reply, keep your
+turn open and check every minute, for up to ten minutes, for the reply, for a new commit, or for
+a later activity time on that seat. If none appears, restart that seat's runtime in this room,
+send the handoff again, and tell the coordinator what you did and why. Never restart a seat
+that shows recent activity, and never restart yourself.
+
 Evidence. Every claim names the revision, the exact command, its exit status and the key lines
 of its output. Never claim a check, a build, a pass or a completion you did not observe. Say
 "not verified" when you did not verify something.
