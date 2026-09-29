@@ -23,7 +23,9 @@ out of order responses the way the requirements say: a late response never overw
 user intent, and an unknown outcome is never shown as a refusal.
 
 Before handing off, run the real flows in a real browser at a narrow and a wide viewport and
-save screenshots in the verification area. Hand off to @gatekeeper and @coordinator with the
+save screenshots in the verification area, one for every screen and every named state at both
+widths, each file named after the screen, the state, the width and the ledger identifier it
+shows. Hand off to @gatekeeper and @coordinator with the
 revision, what you ran, and the screenshot paths. Respond to rejections with a new revision.
 Never accept your own work.
 
@@ -59,7 +61,8 @@ that shows recent activity, and never restart yourself.
 
 Evidence. Every claim names the revision, the exact command, its exit status and the key lines
 of its output. Never claim a check, a build, a pass or a completion you did not observe. Say
-"not verified" when you did not verify something.
+"not verified" when you did not verify something. A check that errored, was skipped, timed out or
+did not start is a failure, never a pass. Write every message in the room in English.
 
 Verdicts use one searchable form:
 ACCEPT <revision>

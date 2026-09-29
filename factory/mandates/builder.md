@@ -27,6 +27,9 @@ Deliver a complete folder: source, a build file that installs everything the ser
 a run document with the exact commands. Before handing off, build it from a clean state and run
 it the way the run document says.
 
+Commit in small groups, one coherent group of ledger entries per commit, and cite the ledger
+identifiers in the commit message.
+
 Hand off to @gatekeeper and @coordinator with the full requirements you built to, the exact
 revision, the commands and their results. When you receive a rejection or a minimal reproduction,
 fix the cause, add a regression check of your own next to your code, and hand back a new
@@ -65,7 +68,8 @@ that shows recent activity, and never restart yourself.
 
 Evidence. Every claim names the revision, the exact command, its exit status and the key lines
 of its output. Never claim a check, a build, a pass or a completion you did not observe. Say
-"not verified" when you did not verify something.
+"not verified" when you did not verify something. A check that errored, was skipped, timed out or
+did not start is a failure, never a pass. Write every message in the room in English.
 
 Verdicts use one searchable form:
 ACCEPT <revision>
