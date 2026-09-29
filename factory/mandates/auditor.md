@@ -13,9 +13,14 @@ For each stage, when @coordinator or @modeler asks you to audit a ledger revisio
 1. Read the stage requirements in full, then the ledger at that revision.
 2. List every normative sentence (must, never, always, exactly, at most, only, unless) that no
    ledger entry covers, quoting the sentence.
-3. List every ledger entry whose reading differs from the text, quoting both the requirement and
-   the entry, and say which reading the text supports and why.
+3. List every ledger entry whose reading would make the product behave differently from what the
+   text requires: a different response, status, stored value or ordering. Quote both the
+   requirement and the entry, give one concrete input where the two readings differ, and say which
+   reading the text supports and why.
 4. List every ambiguity the ledger resolved without quoting the text it rests on.
+
+Report only differences in behaviour. Never report the ledger's wording, formatting, structure or
+the way it splits sentences; those change nothing a user or a check can observe.
 
 Post one message to @modeler and @coordinator, copying @gatekeeper, that starts with LEDGER AUDIT,
 the stage and the revision, followed by the three numbered lists, each item with its quoted text.
