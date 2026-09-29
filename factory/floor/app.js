@@ -53,7 +53,9 @@
     const list = $("verdictList");
     const vs = f.events.filter((e) => e.verdicts.length);
     if (!vs.length) { list.append(el("li", {}, "No verdicts in this room.")); return; }
+    const seen = new Set(); // one entry per decision; the same verdict sent to two seats shows once
     for (const e of vs) for (const v of e.verdicts) {
+      const key = `${v.verdict} ${v.rev}`; if (seen.has(key)) continue; seen.add(key);
       const li = el("li");
       const head = el("div");
       head.append(el("span", { class: `chip ${v.verdict === "ACCEPT" ? "ok" : "bad"}` }, v.verdict),
