@@ -1,0 +1,16 @@
+# Local research, the private reference service and third-party material stay out of the repository.
+research/
+reference/
+.venv*/
+dark-factory-wearedevs/
+*.pdf
+*.mp4
+*.m4a
+.DS_Store
+# Third-party reference screenshots: private design research, never published.
+factory/design-kit/reference/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
