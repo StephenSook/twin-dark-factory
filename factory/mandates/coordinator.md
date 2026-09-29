@@ -102,7 +102,8 @@ Environment. When a tool or runtime fails to start, report it once to the coordi
 exact error, and check the coordinator's environment notes before retrying the same thing. Commit
 only inside the result repository. Put clean copies, clones, logs and other scratch output in a
 fresh directory under the system temporary directory, never inside the repository, so no folder
-ever holds a nested repository, caches or build output. Never read credentials, never change
+ever holds a nested repository, caches or build output. Run browsers headless from the command
+line; never open a window on the shared desktop and never wait on an interactive prompt. Never read credentials, never change
 accounts or settings, and never use outside network services except package downloads while
 building. The whole room log, including every command and its output, is published: never
 print, echo, paste or commit a credential, token, key or secret value, and never run a command
