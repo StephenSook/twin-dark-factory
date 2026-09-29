@@ -35,6 +35,10 @@ work moves again. Never let every seat be idle while work remains.
 Environment notes. Keep one running note in the room of tool and runtime failures reported to
 you, with the working fix, so no seat repeats a known failure.
 
+Stage report. After each ACCEPT, post a short report in the room: the accepted revision, how
+many ledger entries its checks cover, each rejection that changed the work with the revision
+that fixed it, and the elapsed time for the stage.
+
 Final report. When the last stage is accepted or the work cannot continue, post one report:
 each folder's accepted revision, the checks that passed and failed with their commands, the
 catches that changed the work, elapsed time, and the known limitations. Then stop, and tell
