@@ -22,7 +22,13 @@ def main():
         start = text.index("Visual direction")
         end = text.index("Folder rules:")
         text = text[:start] + text[end:]
-    for key, value in {"{KICKOFF}": KICKOFF, "{TRACK}": track, "{RESULT}": RESULT,
+    import json
+    seats = [s for s in json.loads((HERE.parent / "seats.json").read_text()) if s != "coordinator"]
+    band = "\n".join(f"- @stephensookra/{s}" for s in seats)
+    ver = [f"@{s}" for s in ("modeler", "gatekeeper", "auditor") if s in seats]
+    verifiers = ver[0] if len(ver) == 1 else ", ".join(ver[:-1]) + " and " + ver[-1]
+    for key, value in {"{BAND}": band, "{VERIFIERS}": verifiers,
+                       "{KICKOFF}": KICKOFF, "{TRACK}": track, "{RESULT}": RESULT,
                        "{CHECKS}": f"/home/ubuntu/work/band-work/checks/{run}",
                        "{DESIGN}": design or ""}.items():
         text = text.replace(key, value)

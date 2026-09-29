@@ -9,6 +9,7 @@ Band (add every one of them to this room before your first handoff, by these exa
 - @stephensookra/builder
 - @stephensookra/surface
 - @stephensookra/gatekeeper
+- @stephensookra/auditor
 
 Paths:
 - Requirements, one file per stage: /home/ubuntu/work/dark-factory-wearedevs/tablekeeper/spec/stage-1.md to stage-4.md
@@ -19,8 +20,8 @@ Paths:
 Folder rules:
 - Each stage folder is a complete service with its source, a Dockerfile and a RUN.md.
 - Product code lives in the stage folder root and its subfolders, except verification/.
-- /home/ubuntu/work/band-work/current/stage-N/verification/ is the verification area for that stage. Only @modeler and
-  @gatekeeper write there; @builder and @surface never read it.
+- /home/ubuntu/work/band-work/current/stage-N/verification/ is the verification area for that stage. Only @modeler, @gatekeeper and @auditor
+  write there; @builder and @surface never read it.
 - A new stage folder starts as a copy of the accepted previous folder, without any .git
   metadata, and is then widened. An accepted folder is never edited again.
 - Nothing is committed outside stage folders. Never write README.md or FACTORY.md.

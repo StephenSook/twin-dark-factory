@@ -5,10 +5,7 @@ requirements and within the band. If the band cannot continue, record the blocke
 evidence as the outcome and finish with your final report.
 
 Band (add every one of them to this room before your first handoff, by these exact handles):
-- @stephensookra/modeler
-- @stephensookra/builder
-- @stephensookra/surface
-- @stephensookra/gatekeeper
+{BAND}
 
 Paths:
 - Requirements, one file per stage: {KICKOFF}/{TRACK}/spec/stage-1.md to stage-4.md
@@ -26,8 +23,8 @@ Visual direction (from the product owner, for every screen the requirements name
 Folder rules:
 - Each stage folder is a complete service with its source, a Dockerfile and a RUN.md.
 - Product code lives in the stage folder root and its subfolders, except verification/.
-- {RESULT}/stage-N/verification/ is the verification area for that stage. Only @modeler and
-  @gatekeeper write there; @builder and @surface never read it.
+- {RESULT}/stage-N/verification/ is the verification area for that stage. Only {VERIFIERS}
+  write there; @builder and @surface never read it.
 - A new stage folder starts as a copy of the accepted previous folder, without any .git
   metadata, and is then widened. An accepted folder is never edited again.
 - Nothing is committed outside stage folders. Never write README.md or FACTORY.md.
