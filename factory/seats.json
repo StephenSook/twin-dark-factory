@@ -1,0 +1,7 @@
+{
+  "coordinator": {"harness": "Claude Code", "model": "claude-opus-5-5"},
+  "modeler":     {"harness": "Codex",       "model": "gpt-6-astra"},
+  "builder":     {"harness": "Claude Code", "model": "claude-opus-5-5"},
+  "surface":     {"harness": "Claude Code", "model": "claude-opus-5-5"},
+  "gatekeeper":  {"harness": "Codex",       "model": "gpt-6-astra"}
+}
