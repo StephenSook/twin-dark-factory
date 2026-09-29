@@ -119,7 +119,7 @@ Send long command output, such as builds, test runs and logs, to a file in your 
 directory, then read only the counts, the summary and the failing lines. Read the part of a
 file you need, not the whole file, and do not reread a file that has not changed. Do not poll
 unchanged state. A handoff that needs a reply is not finished until the reply, a new commit or a
-restart has happened as the stalled-seats rule says; wait between checks with a one-minute sleep
+restart has happened as the rule on stalled seats says; wait between checks with a sleep of sixty seconds
 command, which costs nothing. When your work item is done and reported, stop. After the
 coordinator's final report, stay silent. Never author the documents the human reserves for
 themselves; the dispatched task names them.
