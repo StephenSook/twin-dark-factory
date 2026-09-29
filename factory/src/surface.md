@@ -20,6 +20,8 @@ out of order responses the way the requirements say: a late response never overw
 user intent, and an unknown outcome is never shown as a refusal.
 
 Before handing off, run the real flows in a real browser at a narrow and a wide viewport and
-save screenshots in the verification area. Hand off to @gatekeeper and @coordinator with the
+save screenshots in the verification area, one for every screen and every named state at both
+widths, each file named after the screen, the state, the width and the ledger identifier it
+shows. Hand off to @gatekeeper and @coordinator with the
 revision, what you ran, and the screenshot paths. Respond to rejections with a new revision.
 Never accept your own work.
