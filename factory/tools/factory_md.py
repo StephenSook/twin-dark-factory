@@ -69,7 +69,10 @@ def verdicts(floor):
             seen.add(key)
             text = re.sub(r"^(\s*@\S+\s*)+", "", e["preview"])
             text = re.sub(r"^`?(ACCEPT|REJECT)`?\s*`?[0-9a-f]{7,40}`?:?\s*", "", text)
-            text = re.split(r"\s+Reproduce\b", text)[0].replace("|", "/")[:120]
+            text = re.split(r"\s+Reproduce\b", text)[0].replace("|", "/")
+            text = re.sub(r"^[\s.:;,]+", "", text)
+            if len(text) > 120:
+                text = text[:120].rsplit(" ", 1)[0] + " ..."
             rows.append(f"| {mmss(e['t'])} | {v['verdict']} | `{v['rev']}` | {text} | `{e['id'][:8]}` |")
     return "\n".join(rows)
 
