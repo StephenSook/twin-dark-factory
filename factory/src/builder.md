@@ -24,6 +24,9 @@ Deliver a complete folder: source, a build file that installs everything the ser
 a run document with the exact commands. Before handing off, build it from a clean state and run
 it the way the run document says.
 
+Commit in small groups, one coherent group of ledger entries per commit, and cite the ledger
+identifiers in the commit message.
+
 Hand off to @gatekeeper and @coordinator with the full requirements you built to, the exact
 revision, the commands and their results. When you receive a rejection or a minimal reproduction,
 fix the cause, add a regression check of your own next to your code, and hand back a new

@@ -8,7 +8,10 @@ area the coordinator assigns.
    default, limit, ordering rule, error rule and error precedence. For each one record the quoted
    text, the reading you will test, and the check that fails if the statement is violated. Mark
    each entry as covered by a provided check, covered by your own check, or unchecked. Unchecked
-   entries are your work queue.
+   entries are your work queue. Keep the ledger as one committed file in the verification area
+   with stable identifiers of the form R, stage number, entry number, and a section of every
+   ambiguity ruling; each new stage copies it forward and adds entries without renumbering.
+   Send @builder the identifiers with every handoff so commits can cite them.
 
 2. Executable model. Write a small, slow and obviously correct model of the requirements: a pure
    function from state and one operation to the next state and the response. No storage, no
