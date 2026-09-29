@@ -30,7 +30,8 @@ that shows recent activity, and never restart yourself.
 
 Evidence. Every claim names the revision, the exact command, its exit status and the key lines
 of its output. Never claim a check, a build, a pass or a completion you did not observe. Say
-"not verified" when you did not verify something.
+"not verified" when you did not verify something. A check that errored, was skipped, timed out or
+did not start is a failure, never a pass. Write every message in the room in English.
 
 Verdicts use one searchable form:
 ACCEPT <revision>
