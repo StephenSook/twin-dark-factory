@@ -89,6 +89,71 @@ def seat_costs(sessions_path, room):
     return sorted(((k, *v) for k, v in rows.items()), key=lambda r: -r[1])
 
 
+ART = {"dir": None}
+
+
+def art(name, cls):
+    """An illustration from the art folder, or nothing when the image is absent."""
+    d = ART["dir"]
+    if d is None:
+        return ""
+    for ext in ("webp", "png"):
+        if (d / f"{name}.{ext}").exists():
+            return f'<img class="{cls}" src="art/{name}.{ext}" alt="">'
+    return ""
+
+
+def flow_svg(width=1640, height=600):
+    def box(x, y, w, h, fill, title, sub):
+        return (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="26" fill="{fill}" stroke="{INK}" stroke-width="4"/>'
+                f'<text x="{x + w / 2}" y="{y + h / 2 - 8}" text-anchor="middle" class="bt">{esc(title)}</text>'
+                f'<text x="{x + w / 2}" y="{y + h / 2 + 34}" text-anchor="middle" class="bs">{esc(sub)}</text>')
+
+    def arrow(x1, y1, x2, y2, color=INK, dash=""):
+        d = f' stroke-dasharray="{dash}"' if dash else ""
+        return f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}" stroke-width="6"{d} marker-end="url(#ah)"/>'
+
+    return "".join([
+        f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" role="img">',
+        f'<defs><marker id="ah" markerUnits="userSpaceOnUse" markerWidth="26" markerHeight="26" refX="22" refY="13" orient="auto">'
+        f'<path d="M0,0 L26,13 L0,26 z" fill="{INK}"/></marker><marker id="ahr" markerUnits="userSpaceOnUse" markerWidth="26" markerHeight="26" refX="22" refY="13" orient="auto"><path d="M0,0 L26,13 L0,26 z" fill="{RED}"/></marker></defs>',
+        box(0, 260, 300, 140, BUTTER, "Written spec", "four stages"),
+        box(440, 110, 480, 150, PINK_T, "The product", "builder + surface (Claude)"),
+        box(440, 400, 480, 150, AQUA, "An executable model", "modeler (Codex), never reads the code"),
+        box(1100, 255, 520, 150, AQUA, "gatekeeper (Codex)", "same random operations to both"),
+        arrow(300, 305, 435, 200), arrow(300, 355, 435, 460),
+        arrow(920, 190, 1095, 300), arrow(920, 470, 1095, 360),
+        f'<text x="1360" y="450" text-anchor="middle" class="bs">50 requests at once, planted faults,</text>',
+        f'<text x="1360" y="488" text-anchor="middle" class="bs">upgrades, security, the design brief</text>',
+        f'<path d="M1360,250 C1360,90 1150,60 925,140" fill="none" stroke="{RED}" stroke-width="6" stroke-dasharray="14 10" marker-end="url(#ahr)"/>',
+        f'<text x="1360" y="40" text-anchor="middle" class="bt" style="fill:{RED}">REJECT with a reproduction</text>',
+        f'<text x="1360" y="570" text-anchor="middle" class="bt" style="fill:{GREEN}">ACCEPT only when they agree</text>',
+        "</svg>"])
+
+
+def caught_slide(floor):
+    """The first rejection, in the gatekeeper's words, and the seat commit that fixed it."""
+    import re
+    first = next((e for e in floor["events"] for v in e["verdicts"] if v["verdict"] == "REJECT"), None)
+    if first is None:
+        return slide("No rejections in this run.", "")
+    text = re.sub(r"^(\s*@\S+\s*)+", "", first["preview"])
+    text = re.sub(r"^`?REJECT`?\s*`?[0-9a-f]{7,40}`?:?\s*", "", text).strip()
+    text = re.split(r"\s+Reproduce\b", text)[0]
+    if not text.endswith("."):
+        text = text[: text.rfind(".") + 1] or text  # drop a sentence cut off by the preview limit
+    rev = next(v["rev"] for v in first["verdicts"] if v["verdict"] == "REJECT")
+    fix = next((c for c in floor["commits"] if c["by_seat"] and c["t"] > first["t"]
+                and c["author"] in ("builder", "surface")), None)
+    fix_html = (f'<div class="card fix"><div class="who">{esc(fix["author"])} fixed it, {esc(fmt_t(fix["t"] - first["t"]))} later</div>'
+                f'<p>{esc(fix["subject"])}</p><div class="id">commit {esc(fix["sha"][:7])}</div></div>') if fix else ""
+    return slide(
+        "A bad result it caught: the gatekeeper refused, the builder fixed it.",
+        f'<div class="caught"><div class="card rej"><div class="who">gatekeeper: REJECT {esc(rev)} at {esc(fmt_t(first["t"]))}</div>'
+        f'<p>{esc(text)}</p><div class="id">room message {esc(first["id"])}</div></div>'
+        f'<div class="arrowbig">&rarr;</div>{fix_html}</div>')
+
+
 def slide(headline, body, cls="", kicker=""):
     k = f'<div class="kicker">{esc(kicker)}</div>' if kicker else ""
     return f'<section class="slide {cls}">{k}<h1>{esc(headline)}</h1><div class="body">{body}</div></section>'
@@ -110,13 +175,18 @@ def build(floor, sessions_path, facts, draft):
         f'<div class="bignums"><div><b>{len(stages)}/4</b><span>stages reached</span></div>'
         f'<div><b>{T["human_messages_after_dispatch"]}</b><span>human messages after dispatch</span></div>'
         f'<div><b>{T["rejects"]}</b><span>bad results caught and fixed</span></div></div>'
-        f'<p class="url">{esc(facts.get("live_url", ""))}</p>', "title"))
-    seats = "".join(f'<div class="seat {fam.get(s, "Claude").lower()}"><b>{esc(s)}</b><span>{esc(fam.get(s, ""))}</span></div>'
+        f'<p class="url">{esc(facts.get("live_url", ""))}</p>' + art("hero-factory", "hero"), "title"))
+    seats = "".join(f'<div class="seat {fam.get(s, "Claude").lower()}">{art(f"seat-{s}", "icon")}'
+                    f'<b>{esc(s)}</b><span>{esc(fam.get(s, ""))}</span></div>'
                     for s in ["coordinator", "modeler", "builder", "surface", "gatekeeper"])
     slides.append(slide(
         "Two model families check each other; the seat that writes the code never accepts it.",
         f'<div class="seats">{seats}</div><p class="note">Claude seats plan and build. Codex seats model the '
         'spec independently and decide acceptance, without ever editing product code.</p>'))
+    slides.append(slide(
+        "The spec is built twice, by two model families, and the two builds must agree.",
+        flow_svg()))
+    slides.append(caught_slide(floor))
     slides.append(slide(
         "Every rejection changed the work before the next stage began.",
         timeline(floor)))
@@ -127,12 +197,17 @@ def build(floor, sessions_path, facts, draft):
     slides.append(slide(
         facts["holdout_headline"],
         f'<div class="bignums"><div><b>{esc(facts["holdout_score"])}</b><span>hidden attacks passed</span></div>'
-        f'<div><b class="mono">{esc(facts["holdout_digest"][:12])}</b><span>digest committed before dispatch</span></div></div>'))
+        f'<div><b class="mono">{esc(facts["holdout_digest"][:12])}</b><span>digest committed before dispatch</span></div></div>'
+        + art("sealed-envelope", "corner")))
     slides.append(slide(
         f"The whole run cost {total_tok / 1e6:,.0f}M tokens, about ${total_cost:,.0f} at list prices.",
         hbars([(s, c) for s, c, _, _ in costs], unit="", fmt=lambda v: f"${v:,.2f}",
               accent={s: (INDIGO if fam.get(s) == "Codex" else HOT) for s, *_ in costs})
         + '<p class="note">Band\'s own usage export, list-price equivalent. Pink: Claude seats. Indigo: Codex seats.</p>'))
+    if facts.get("limits"):
+        slides.append(slide(
+            "What it does not do yet.",
+            '<ul class="limits">' + "".join(f"<li>{esc(x)}</li>" for x in facts["limits"]) + "</ul>"))
     slides.append(slide(
         "Check every number yourself.",
         '<ul class="check">' + "".join(f"<li><code>{esc(c)}</code></li>" for c in facts["check_commands"]) + "</ul>"))
@@ -168,6 +243,19 @@ svg .small {{ font: 600 26px Figtree, sans-serif; fill: #4a4560; }}
 svg .dot {{ font: 800 26px Figtree, sans-serif; fill: #fff; }}
 .check {{ font-size: 32px; line-height: 1.9; }}
 code {{ font-family: 'JetBrains Mono', monospace; background: #fff; border: 2px solid {INK}; border-radius: 10px; padding: 4px 12px; font-size: 26px; }}
+img.hero {{ position: absolute; right: 90px; bottom: 60px; width: 620px; }}
+img.corner {{ position: absolute; right: 150px; bottom: 90px; width: 440px; }}
+img.icon {{ display: block; width: 150px; height: 150px; object-fit: contain; margin: 0 auto 14px; }}
+svg .bt {{ font: 800 36px 'Bricolage Grotesque', sans-serif; fill: {INK}; }}
+svg .bs {{ font: 600 26px Figtree, sans-serif; fill: #3a3550; }}
+.caught {{ display: flex; align-items: stretch; gap: 40px; }}
+.card {{ flex: 1; background: #fff; border: 4px solid {INK}; border-radius: 28px; padding: 40px 44px; }}
+.card.rej {{ border-color: {RED}; }} .card.fix {{ border-color: {GREEN}; }}
+.card .who {{ font: 800 32px 'Bricolage Grotesque', sans-serif; color: {INK}; margin-bottom: 18px; }}
+.card p {{ font-size: 32px; line-height: 1.4; margin: 0 0 22px; }}
+.card .id {{ font-family: 'JetBrains Mono', monospace; font-size: 22px; color: #6a6480; }}
+.arrowbig {{ font-size: 110px; color: {INK}; align-self: center; }}
+.limits {{ font-size: 36px; line-height: 1.6; max-width: 1500px; }}
 .draft {{ position: absolute; right: 60px; top: 40px; background: {HOT}; color: #fff; font-weight: 800; font-size: 26px; padding: 10px 22px; border-radius: 999px; }}
 </style></head><body>"""
 
@@ -178,6 +266,11 @@ def main():
     out = pathlib.Path(sys.argv[4])
     draft = sys.argv[sys.argv.index("--draft") + 1] if "--draft" in sys.argv else ""
     out.mkdir(parents=True, exist_ok=True)
+    if "--art" in sys.argv:
+        import shutil
+        src = pathlib.Path(sys.argv[sys.argv.index("--art") + 1])
+        shutil.copytree(src, out / "art", dirs_exist_ok=True)
+        ART["dir"] = out / "art"
     (out / "deck.html").write_text(build(floor, sys.argv[2], facts, draft))
     print(out / "deck.html")
 
