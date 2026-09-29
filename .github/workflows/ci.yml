@@ -28,11 +28,14 @@ jobs:
         run: python factory/tools/lint_mandates.py kickoff factory/mandates
 
   guard:
-    name: Result-repository commit guard
+    name: Commit guard and holdout seal
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: sh factory/tools/test_pre_commit.sh
+      - name: Result-repository commit guard refuses bad commits and accepts good ones
+        run: sh factory/tools/test_pre_commit.sh
+      - name: Holdout seal verifies, rejects tampering and refuses an empty folder
+        run: sh factory/tools/test_seal_holdout.sh
 
   secrets:
     name: No secrets in full history
