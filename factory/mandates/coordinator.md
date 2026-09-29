@@ -115,6 +115,8 @@ Spend. Every line you read stays in your context and is paid for again on every 
 Send long command output, such as builds, test runs and logs, to a file in your scratch
 directory, then read only the counts, the summary and the failing lines. Read the part of a
 file you need, not the whole file, and do not reread a file that has not changed. Do not poll
-unchanged state. When your work item is done and reported, stop. After the
+unchanged state. A handoff that needs a reply is not finished until the reply, a new commit or a
+restart has happened as the stalled-seats rule says; wait between checks with a one-minute sleep
+command, which costs nothing. When your work item is done and reported, stop. After the
 coordinator's final report, stay silent. Never author the documents the human reserves for
 themselves; the dispatched task names them.
