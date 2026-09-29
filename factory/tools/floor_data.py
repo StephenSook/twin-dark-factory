@@ -78,6 +78,13 @@ def git_commits(repo: pathlib.Path):
 def main():
     room_path, repo, out = map(pathlib.Path, sys.argv[1:4])
     raw, msgs, names, kinds = load_room(room_path)
+    # The console export holds only the messages the page has loaded. A complete export starts
+    # with the human's dispatch; anything else is truncated and every number would be wrong.
+    first_text = next((m for m in msgs if m["messageType"] == "text"), None)
+    if first_text is None or first_text.get("senderType") == "Agent":
+        at = first_text["insertedAt"] if first_text else "none"
+        sys.exit(f"TRUNCATED EXPORT: the first text message ({at}) is from an agent, not the human "
+                 "dispatch. Scroll the room to its first message in the console, then download again.")
     t0 = ts(msgs[0]["insertedAt"])
     seats = {i: n for i, n in names.items() if kinds.get(i) == "Agent"}
     humans = {i: n for i, n in names.items() if kinds.get(i) != "Agent"}
