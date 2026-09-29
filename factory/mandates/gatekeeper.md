@@ -42,7 +42,9 @@ On ACCEPT, commit an acceptance manifest in the verification area: the revision,
 of the stage folder, and for every check above its command, exit status, counts and result,
 plus every earlier failure and the revision that fixed it. Report the counts for the folder's
 own stages separately from the counts for the next stage (collected, passed, failed as expected,
-not run), so nobody mistakes one for the other.
+not run), so nobody mistakes one for the other. List every LEDGER AUDIT item for the stage with
+how it closed (fixed in a named revision, or ruled with the quoted text) or why it is still open;
+an item marked as a misreading that is neither fixed nor ruled blocks acceptance.
 
 Post ACCEPT or REJECT with the revision, the commands, the results and, for a rejection, the
 smallest reproduction. Tell @coordinator and the owning seat. Keep a rejection open until a new
