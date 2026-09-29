@@ -27,6 +27,7 @@ dispatch, and the visual brief.
 | `factory/tools/lint_mandates.py` | Fails if a mandate names track detail, using the organizers' vocabulary list |
 | `factory/tools/pre-commit` | Result-repository guard. Commits are refused unless they come from a named seat. Seats may only change stage folders, and no commit may add a nested repository or cache files. |
 | `factory/tools/test_pre_commit.sh` | Proves the guard both ways |
+| `factory/tools/seal_holdout.py` | Commit-then-reveal for a holdout check suite the band never sees: seal a digest before a run, publish the files after, anyone verifies |
 | `factory/dispatch/` | The task sent to the coordinator: the only human input to a run |
 | `factory/design-kit/` | Visual brief and six illustrations supplied by the product owner |
 
