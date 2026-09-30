@@ -42,6 +42,21 @@ def validate_holdout(facts):
     return digest
 
 
+def followup_commit(commits, revision):
+    matches = [index for index, commit in enumerate(commits) if commit["sha"].startswith(revision)]
+    if len(matches) != 1:
+        return None
+    index = matches[0]
+    rejected_stages = set(commits[index]["stages"])
+    return next(
+        (candidate for candidate in commits[index + 1:]
+         if candidate["by_seat"]
+         and candidate["author"] in ("builder", "surface")
+         and rejected_stages.intersection(candidate["stages"])),
+        None,
+    )
+
+
 def main():
     floor = json.load(open(sys.argv[1]))
     facts = json.load(open(sys.argv[2]))
@@ -73,14 +88,19 @@ def main():
         text = re.sub(r"^(\s*@\S+\s*)+", "", e["preview"])
         text = re.sub(r"^`?REJECT`?\s*`?[0-9a-f]{7,40}`?:?\s*", "", text)
         text = re.split(r"\s+Reproduce\b", text)[0][:200]
-        fix = next((c for c in commits if c["by_seat"] and c["t"] > e["t"] and c["author"] in ("builder", "surface")), None)
+        fix = followup_commit(commits, rev)
         w(f"**0:30 A bad result the factory caught.** At {mmss(e['t'])} the gatekeeper rejected revision "
           f"`{rev}`: \"{text.strip()}\"")
         w(f"```\n{show.format(e['id'])}\n```")
         if fix:
-            w(f"{fix['author']} fixed it {mmss(fix['t'] - e['t'])} later in commit `{fix['sha'][:7]}` "
+            w(f"{fix['author']} followed with a same-stage commit "
+              f"{mmss(max(0, fix['t'] - e['t']))} later in `{fix['sha'][:7]}` "
               f"(\"{fix['subject']}\"):\n```\ngit show --stat {fix['sha'][:7]}\n```")
-        w(f"The run had {T['rejects']} rejections; every one was followed by a seat commit.\n")
+        followed = T["rejects_followed_by_seat_commit"]
+        if followed == T["rejects"]:
+            w(f"The run had {T['rejects']} rejections; every one was followed by a same-stage writer commit.\n")
+        else:
+            w(f"The run had {T['rejects']} rejections; {followed} had a later same-stage writer commit.\n")
     w("**1:15 Every stage accepted by a different model family than the one that wrote it.**\n")
     w("| Stage | Accepted at | Revision | Room message |\n|---|---|---|---|")
     for i, (e, rev) in enumerate(accepts, 1):

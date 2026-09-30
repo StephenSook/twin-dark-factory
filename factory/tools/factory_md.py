@@ -103,6 +103,21 @@ def verdicts(floor):
     return "\n".join(rows)
 
 
+def followup_commit(commits, revision):
+    matches = [index for index, commit in enumerate(commits) if commit["sha"].startswith(revision)]
+    if len(matches) != 1:
+        return None
+    index = matches[0]
+    rejected_stages = set(commits[index]["stages"])
+    return next(
+        (candidate for candidate in commits[index + 1:]
+         if candidate["by_seat"]
+         and candidate["author"] in ("builder", "surface")
+         and rejected_stages.intersection(candidate["stages"])),
+        None,
+    )
+
+
 def first_catch(floor):
     for e in floor["events"]:
         for v in e["verdicts"]:
@@ -111,9 +126,9 @@ def first_catch(floor):
             text = re.sub(r"^(\s*@\S+\s*)+", "", e["preview"])
             text = re.sub(r"^`?REJECT`?\s*`?[0-9a-f]{7,40}`?:?\s*", "", text)
             text = re.split(r"\s+Reproduce\b", text)[0].strip()
-            fix = next((c for c in floor["commits"] if c["by_seat"] and c["t"] > e["t"]
-                        and c["author"] in ("builder", "surface")), None)
-            tail = (f" {fix['author']} fixed it {mmss(fix['t'] - e['t'])} later in `{fix['sha'][:7]}` "
+            fix = followup_commit(floor["commits"], v["rev"])
+            elapsed = max(0, fix["t"] - e["t"]) if fix else 0
+            tail = (f" {fix['author']} followed with a same-stage commit {mmss(elapsed)} later in `{fix['sha'][:7]}` "
                     f"(\"{fix['subject']}\").") if fix else ""
             return f"at {mmss(e['t'])} the gatekeeper rejected `{v['rev']}`: \"{text}\" (room message `{e['id']}`).{tail}"
     return "no rejection in this run."
@@ -224,7 +239,7 @@ def main():
         "{{SEATS_TABLE}}": seats_table(repo),
         "{{MANDATE_HASHES}}": hashes(repo),
         "{{CATCH_STATS}}": (f"{T['rejects']} rejections and {T['accepts']} acceptances over {T['handoffs']} handoffs; "
-                            f"{T['rejects_followed_by_seat_commit']} of the {T['rejects']} rejections were followed by a seat commit. "
+                            f"{T['rejects_followed_by_seat_commit']} of the {T['rejects']} rejections were followed by a same-stage writer commit. "
                             f"{T['seat_commits']} of {T['commits']} commits were made by seats."),
         "{{VERDICT_TABLE}}": verdicts(floor),
         "{{FIRST_CATCH}}": first_catch(floor),

@@ -89,6 +89,30 @@ def seat_costs(sessions_path, room):
     return sorted(((k, *v) for k, v in rows.items()), key=lambda r: -r[1])
 
 
+def model_family(models):
+    names = " ".join(models).lower()
+    if "gpt" in names:
+        return "Codex"
+    if "claude" in names:
+        return "Claude"
+    if "deepseek" in names:
+        return "DeepSeek"
+    return "Other"
+
+
+def seat_grid(costs):
+    families = {seat: model_family(models) for seat, _, _, models in costs}
+    handles = [seat for seat, _, _, _ in costs]
+    if "auditor" not in handles:
+        handles.append("auditor")
+    return "".join(
+        f'<div class="seat {families.get(seat, "Other").lower().replace(" ", "-")}">'
+        f'{art(f"seat-{seat}", "icon")}<b>{esc(seat)}</b>'
+        f'<span>{esc(families.get(seat, "not in BAND usage"))}</span></div>'
+        for seat in handles
+    )
+
+
 ART = {"dir": None}
 
 
@@ -132,7 +156,7 @@ def flow_svg(width=1640, height=600):
 
 
 def caught_slide(floor):
-    """The first rejection, in the gatekeeper's words, and the seat commit that fixed it."""
+    """The first rejection and, when proven by stage plus ancestry, its writer follow-up."""
     import re
     first = next((e for e in floor["events"] for v in e["verdicts"] if v["verdict"] == "REJECT"), None)
     if first is None:
@@ -143,15 +167,59 @@ def caught_slide(floor):
     if not text.endswith("."):
         text = text[: text.rfind(".") + 1] or text  # drop a sentence cut off by the preview limit
     rev = next(v["rev"] for v in first["verdicts"] if v["verdict"] == "REJECT")
-    fix = next((c for c in floor["commits"] if c["by_seat"] and c["t"] > first["t"]
-                and c["author"] in ("builder", "surface")), None)
-    fix_html = (f'<div class="card fix"><div class="who">{esc(fix["author"])} fixed it, {esc(fmt_t(fix["t"] - first["t"]))} later</div>'
+    matches = [index for index, commit in enumerate(floor["commits"])
+               if commit["sha"].startswith(rev)]
+    fix = None
+    if len(matches) == 1:
+        index = matches[0]
+        rejected_stages = set(floor["commits"][index]["stages"])
+        fix = next(
+            (candidate for candidate in floor["commits"][index + 1:]
+             if candidate["by_seat"]
+             and candidate["author"] in ("builder", "surface")
+             and rejected_stages.intersection(candidate["stages"])),
+            None,
+        )
+    elapsed = max(0, fix["t"] - first["t"]) if fix else 0
+    fix_html = (f'<div class="card fix"><div class="who">{esc(fix["author"])} followed with a same-stage commit, {esc(fmt_t(elapsed))} later</div>'
                 f'<p>{esc(fix["subject"])}</p><div class="id">commit {esc(fix["sha"][:7])}</div></div>') if fix else ""
+    headline = (f"A bad result it caught: the gatekeeper refused, then the {fix['author']} changed the same stage."
+                if fix else "A bad result it caught: the gatekeeper refused it.")
+    followup_html = f'<div class="arrowbig">&rarr;</div>{fix_html}' if fix else ""
     return slide(
-        "A bad result it caught: the gatekeeper refused, the builder fixed it.",
+        headline,
         f'<div class="caught"><div class="card rej"><div class="who">gatekeeper: REJECT {esc(rev)} at {esc(fmt_t(first["t"]))}</div>'
         f'<p>{esc(text)}</p><div class="id">room message {esc(first["id"])}</div></div>'
-        f'<div class="arrowbig">&rarr;</div>{fix_html}</div>')
+        f'{followup_html}</div>')
+
+
+def rejection_claims(totals):
+    rejected = totals["rejects"]
+    followed = totals["rejects_followed_by_seat_commit"]
+    label = "rejections with a same-stage writer follow-up"
+    if rejected == 0:
+        headline = "No revisions were rejected in this run."
+    elif followed == rejected:
+        headline = "Every rejection had a later same-stage writer commit."
+    else:
+        headline = f"{followed} of {rejected} rejections had a later same-stage writer commit."
+    return followed, label, headline
+
+
+def title_claim(facts, totals):
+    core = facts.get(
+        "one_line",
+        "Twin is a BAND dark factory whose independent seats build and verify each stage.",
+    )
+    human = totals["human_messages_after_dispatch"]
+    development = bool(facts.get("development_run")) or human > 0
+    if development and human:
+        autonomy = f"This development run used one dispatch plus {human} human recovery messages."
+    elif development:
+        autonomy = "This development run used one dispatch and no later human input."
+    else:
+        autonomy = "The judged run used one dispatch and no later human input."
+    return f"{core} {autonomy}"
 
 
 def slide(headline, body, cls="", kicker=""):
@@ -163,32 +231,30 @@ def build(floor, sessions_path, facts, draft):
     T = floor["totals"]
     room = floor["generated_from"]["room_id"]
     costs = seat_costs(sessions_path, room)
-    fam = {s: ("Codex" if any("gpt" in m for m in models) else "Claude") for s, _, _, models in costs}
+    fam = {s: model_family(models) for s, _, _, models in costs}
     total_cost = sum(c for _, c, _, _ in costs)
     total_tok = sum(t for _, _, t, _ in costs)
     stages = facts["stage_claims"]
+    followed, followed_label, rejection_headline = rejection_claims(T)
     slides = []
     slides.append(slide(
         "The builder never grades its own work.",
-        f'<p class="lead">Twin is a BAND dark factory: five coding agents on two model families that turned '
-        f'a four-stage payments spec into a working app with one dispatch and no human help.</p>'
+        f'<p class="lead">{esc(title_claim(facts, T))}</p>'
         f'<div class="bignums"><div><b>{len(stages)}/4</b><span>stages reached</span></div>'
         f'<div><b>{T["human_messages_after_dispatch"]}</b><span>human messages after dispatch</span></div>'
-        f'<div><b>{T["rejects"]}</b><span>bad results caught and fixed</span></div></div>'
+        f'<div><b>{followed}</b><span>{esc(followed_label)}</span></div></div>'
         f'<p class="url">{esc(facts.get("live_url", ""))}</p>' + art("hero-factory", "hero"), "title"))
-    seats = "".join(f'<div class="seat {fam.get(s, "Claude").lower()}">{art(f"seat-{s}", "icon")}'
-                    f'<b>{esc(s)}</b><span>{esc(fam.get(s, ""))}</span></div>'
-                    for s in ["coordinator", "modeler", "builder", "surface", "gatekeeper"])
+    seats = seat_grid(costs)
     slides.append(slide(
-        "Two model families check each other; the seat that writes the code never accepts it.",
-        f'<div class="seats">{seats}</div><p class="note">Claude seats plan and build. Codex seats model the '
-        'spec independently and decide acceptance, without ever editing product code.</p>'))
+        "Independent seats check the writers; the seat that writes the code never accepts it.",
+        f'<div class="seats">{seats}</div><p class="note">Writers implement. The modeler and gatekeeper '
+        'test independently. The auditor supplies a third reading without touching product code.</p>'))
     slides.append(slide(
         "The spec is built twice, by two model families, and the two builds must agree.",
         flow_svg()))
     slides.append(caught_slide(floor))
     slides.append(slide(
-        "Every rejection changed the work before the next stage began.",
+        rejection_headline,
         timeline(floor)))
     slides.append(slide(
         f"Each folder claims its own stage in the organizers' isolated run.",
@@ -233,7 +299,7 @@ h1 {{ font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-siz
 .bignums b {{ display: block; font-family: 'Bricolage Grotesque'; font-size: 110px; color: {INK}; line-height: 1; }}
 .bignums b.mono {{ font-family: 'JetBrains Mono', monospace; font-size: 64px; }}
 .bignums span {{ font-size: 28px; font-weight: 600; }}
-.seats {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 28px; margin: 20px 0 50px; }}
+.seats {{ display: grid; grid-template-columns: repeat(6, 1fr); gap: 24px; margin: 20px 0 50px; }}
 .seat {{ border-radius: 28px; padding: 40px 24px; text-align: center; border: 3px solid {INK}; }}
 .seat.claude {{ background: {PINK_T}; }} .seat.codex {{ background: {AQUA}; }}
 .seat b {{ display: block; font-family: 'Bricolage Grotesque'; font-size: 44px; color: {INK}; }}

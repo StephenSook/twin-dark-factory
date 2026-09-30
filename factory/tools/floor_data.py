@@ -79,6 +79,40 @@ def git_commits(repo: pathlib.Path):
     return commits
 
 
+def declared_seats(repo: pathlib.Path):
+    """Canonical seat names from the mandates committed in a result repository."""
+    if repo.is_file():
+        out = repo.read_text()
+    else:
+        out = subprocess.run(
+            ["git", "-C", str(repo), "ls-tree", "-r", "--name-only", "HEAD", "--", "mandates"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    return {
+        pathlib.PurePosixPath(line).stem
+        for line in out.splitlines()
+        if re.fullmatch(r"mandates/[^/]+\.md", line)
+    }
+
+
+def followup_commit(commits, revision):
+    """First later writer commit touching the rejected revision's stage or stages."""
+    matches = [index for index, commit in enumerate(commits) if commit["sha"].startswith(revision)]
+    if len(matches) != 1:
+        return None
+    index = matches[0]
+    rejected_stages = set(commits[index]["stages"])
+    return next(
+        (candidate for candidate in commits[index + 1:]
+         if candidate["by_seat"]
+         and candidate["author"] in ("builder", "surface")
+         and rejected_stages.intersection(candidate["stages"])),
+        None,
+    )
+
+
 def main():
     room_path, repo, out = map(pathlib.Path, sys.argv[1:4])
     raw, msgs, names, kinds = load_room(room_path)
@@ -125,11 +159,16 @@ def main():
             "preview": MENTION.sub(lambda x: "@" + names.get(x.group(1), "?"), body)[:220],
         })
 
-    commits = git_commits(repo)
-    seat_names = set(seats.values())
-    for c in commits:
-        c["t"] = round(c["t"] - t0, 1)
+    duration_s = ts(msgs[-1]["insertedAt"]) - t0
+    repository_commits = git_commits(repo)
+    seat_names = declared_seats(repo)
+    for c in repository_commits:
+        relative_time = c["t"] - t0
+        # Git records seconds while BAND records milliseconds. Time is display-only, so clamp
+        # it to the observed room window. Stage paths and Git order define run membership.
+        c["t"] = round(max(0.0, min(relative_time, duration_s)), 1)
         c["by_seat"] = c["author"] in seat_names
+    commits = [c for c in repository_commits if c["stages"]]
     stage_first = {}
     for c in commits:
         for s in c["stages"]:
@@ -142,16 +181,17 @@ def main():
             first.setdefault((v["verdict"], v["rev"]), (e["t"], e["id"]))
     accepts = [(t, rev) for (vd, rev), (t, _) in first.items() if vd == "ACCEPT"]
     rejects = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "REJECT"]
-    # Counts rejections that a later seat commit followed; the room shows whether that commit fixed it.
-    changed = sum(1 for t, _, _ in rejects if any(c["by_seat"] and c["t"] > t for c in commits))
+    # The room provides the reason. Repository order and a shared stage prove a writer changed
+    # the rejected work without comparing second-granular Git time to millisecond room time.
+    changed = sum(1 for _, revision, _ in rejects if followup_commit(commits, revision))
     handoffs = [e for e in events if not e["human"] and e["to"]]
     human_after_dispatch = [e for e in events if e["human"]][1:]
 
     floor = {
         "generated_from": {"room": room_path.name, "room_id": (raw.get("room") or {}).get("id"),
                            "exported_at": raw.get("exportedAt"), "messages": len(msgs)},
-        "duration_s": round(ts(msgs[-1]["insertedAt"]) - t0, 1),
-        "seats": sorted(seat_names),
+        "duration_s": round(duration_s, 1),
+        "seats": sorted(seats.values()),
         "per_seat": per_seat,
         "totals": {
             "handoffs": len(handoffs),

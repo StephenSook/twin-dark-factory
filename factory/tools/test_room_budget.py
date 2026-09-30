@@ -1,5 +1,6 @@
 """Regression checks for the room-cap gate and FACTORY.md room provenance."""
 import hashlib
+import importlib.util
 import json
 import pathlib
 import subprocess
@@ -11,6 +12,7 @@ CHECK_ROOM = ROOT / "factory" / "tools" / "check_room.py"
 FLOOR_DATA = ROOT / "factory" / "tools" / "floor_data.py"
 FACTORY_MD = ROOT / "factory" / "tools" / "factory_md.py"
 JUDGE_GUIDE = ROOT / "factory" / "tools" / "judge_guide.py"
+DECK = ROOT / "factory" / "deck" / "build_deck.py"
 failures = []
 
 
@@ -265,9 +267,15 @@ def run_judge_guide_checks():
              "preview": "Quoted FINAL REPORT concern", "verdicts": []},
         ],
         "commits": [
-            {"by_seat": True, "t": 1.5, "author": "builder", "sha": "f" * 40, "subject": "fix burst"},
+            {"by_seat": True, "t": 1.5, "author": "gatekeeper", "sha": "c" * 40,
+             "subject": "candidate with failing burst", "stages": [1]},
+            {"by_seat": True, "t": 2.0, "author": "builder", "sha": "b" * 40,
+             "subject": "unrelated stage work", "stages": [2]},
+            {"by_seat": True, "t": 0.5, "author": "builder", "sha": "f" * 40,
+             "subject": "fix burst", "stages": [1]},
         ],
-        "totals": {"rejects": 1, "human_messages_after_dispatch": 3},
+        "totals": {"rejects": 1, "rejects_followed_by_seat_commit": 1,
+                   "human_messages_after_dispatch": 3},
     }
     facts = {
         "track": "toy",
@@ -297,6 +305,8 @@ def run_judge_guide_checks():
         and "Evidence the band never saw" not in result.stdout
         and "final-id" in result.stdout
         and "audit-id" not in result.stdout
+        and "fix burst" in result.stdout
+        and "unrelated stage work" not in result.stdout
     )
     if good:
         print("ok   judge guide reports the run's track and development limits")
@@ -305,6 +315,89 @@ def run_judge_guide_checks():
         print("BAD  judge guide misstated the run scope")
         print(result.stdout)
         print(result.stderr)
+
+    no_fix_floor = json.loads(json.dumps(floor))
+    no_fix_floor["commits"] = no_fix_floor["commits"][:2]
+    no_fix_floor["totals"]["rejects_followed_by_seat_commit"] = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        floor_path = tmp / "floor.json"
+        facts_path = tmp / "facts.json"
+        floor_path.write_text(json.dumps(no_fix_floor))
+        facts_path.write_text(json.dumps(facts))
+        no_fix_result = subprocess.run(
+            [sys.executable, str(JUDGE_GUIDE), str(floor_path), str(facts_path)],
+            capture_output=True,
+            text=True,
+        )
+    if (
+        no_fix_result.returncode == 0
+        and "0 had a later same-stage writer commit" in no_fix_result.stdout
+        and "every one was followed" not in no_fix_result.stdout
+        and "unrelated stage work" not in no_fix_result.stdout
+    ):
+        print("ok   judge guide refuses to label unrelated stage work as a fix")
+    else:
+        failures.append("judge guide unrelated follow-up")
+        print("BAD  judge guide mislabeled unrelated stage work as a fix")
+        print(no_fix_result.stdout)
+        print(no_fix_result.stderr)
+
+    spec = importlib.util.spec_from_file_location("factory_build_deck_test", DECK)
+    deck = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(deck)
+    report_spec = importlib.util.spec_from_file_location("factory_md_test", FACTORY_MD)
+    report = importlib.util.module_from_spec(report_spec)
+    report_spec.loader.exec_module(report)
+    fixed_slide = deck.caught_slide(floor)
+    no_fix_slide = deck.caught_slide(no_fix_floor)
+    surface_floor = json.loads(json.dumps(floor))
+    surface_floor["commits"][-1]["author"] = "surface"
+    surface_slide = deck.caught_slide(surface_floor)
+    fixed_claims = deck.rejection_claims(floor["totals"])
+    no_fix_claims = deck.rejection_claims(no_fix_floor["totals"])
+    development_title = deck.title_claim(facts, floor["totals"])
+    judged_totals = dict(floor["totals"])
+    judged_totals["human_messages_after_dispatch"] = 0
+    zero_message_development = deck.title_claim({**facts, "development_run": True}, judged_totals)
+    judged_title = deck.title_claim({**facts, "development_run": False}, judged_totals)
+    temporary_grid = deck.seat_grid([
+        ("builder-cx", 1.0, 10, {"gpt-6-astra"}),
+        ("gatekeeper", 1.0, 10, {"gpt-6-astra"}),
+    ])
+    fixed_report = report.first_catch(floor)
+    no_fix_report = report.first_catch(no_fix_floor)
+    if (
+        "fix burst" in fixed_slide
+        and "unrelated stage work" not in fixed_slide
+        and "builder changed the same stage" in fixed_slide
+        and "fixed it" not in fixed_slide
+        and "changed the same stage" not in no_fix_slide
+        and "unrelated stage work" not in no_fix_slide
+        and "surface changed the same stage" in surface_slide
+        and "builder changed the same stage" not in surface_slide
+        and fixed_claims[0] == 1
+        and fixed_claims[2] == "Every rejection had a later same-stage writer commit."
+        and no_fix_claims[0] == 0
+        and no_fix_claims[2] == "0 of 1 rejections had a later same-stage writer commit."
+        and "3 human recovery messages" in development_title
+        and "no later human input" not in development_title
+        and "This development run" in zero_message_development
+        and "The judged run" not in zero_message_development
+        and "no later human input" in judged_title
+        and "The judged run" in judged_title
+        and "<b>builder-cx</b><span>Codex</span>" in temporary_grid
+        and "<b>builder</b>" not in temporary_grid
+        and "<b>auditor</b><span>not in BAND usage</span>" in temporary_grid
+        and "fix burst" in fixed_report
+        and "unrelated stage work" not in fixed_report
+        and "fixed it" not in no_fix_report
+        and "fixed it" not in fixed_report
+    ):
+        print("ok   reports bind a fix to the rejected stage and ancestry")
+    else:
+        failures.append("report rejection follow-up")
+        print("BAD  a report mislabeled a rejection follow-up")
 
     facts["holdout_applicable"] = True
     with tempfile.TemporaryDirectory() as tmp:
@@ -382,8 +475,13 @@ def run_floor_verdict_checks():
         message(4, "text", sender="stephensookra/gatekeeper", content="REJECT ccccccc failing burst"),
         message(5, "text", sender="stephensookra/gatekeeper", content="ACCEPT ddddddd stage accepted"),
         message(6, "text", sender="auditor", content="ACCEPT eeeeeee audit closed"),
-        message(7, "text", sender="stephensookra/builder", content="fixed the rejected revision"),
+        message(7, "text", sender="stephensookra/builder-cx", content="fixed the rejected revision"),
+        message(8, "text", sender="intruder", content="undeclared agent message"),
     ])
+    for index, item in enumerate(room["messages"]):
+        second, millis = divmod(500 + index * 200, 1000)
+        item["insertedAt"] = f"2026-01-01T00:00:0{second}.{millis:03d}Z"
+    room["messages"][-1]["insertedAt"] = "2026-01-01T00:00:02.100Z"
     with tempfile.TemporaryDirectory() as tmp:
         tmp = pathlib.Path(tmp)
         room_path = tmp / "room.json"
@@ -391,8 +489,18 @@ def run_floor_verdict_checks():
         floor_path = tmp / "floor.json"
         room_path.write_text(json.dumps(room))
         log_path.write_text(
+            f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\n"
+            "mandates/builder.md\n"
+            f"{'c' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1fcandidate with failing burst\n"
+            "stage-1/app.py\n"
+            f"{'b' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1funrelated stage work\n"
+            "stage-2/app.py\n"
             f"{'f' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1ffix burst handling\n"
             "stage-1/app.py\n"
+            f"{'9' * 40}\x1fintruder\x1f2026-01-01T00:00:02+00:00\x1fundeclared stage work\n"
+            "stage-3/app.py\n"
+            f"{'d' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:03+00:00\x1fpackage evidence\n"
+            "README.md\n"
         )
         result = subprocess.run(
             [sys.executable, str(FLOOR_DATA), str(room_path), str(log_path), str(floor_path)],
@@ -400,6 +508,34 @@ def run_floor_verdict_checks():
             text=True,
         )
         floor = json.loads(floor_path.read_text()) if floor_path.exists() else {}
+        log_path.write_text(
+            log_path.read_text()
+            + f"{'a' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:04+00:00\x1fpackage again\n"
+              "FACTORY.md\n"
+        )
+        second_path = tmp / "floor-second.json"
+        second = subprocess.run(
+            [sys.executable, str(FLOOR_DATA), str(room_path), str(log_path), str(second_path)],
+            capture_output=True,
+            text=True,
+        )
+        floor_second = json.loads(second_path.read_text()) if second_path.exists() else {}
+        unrelated_log = tmp / "unrelated.log"
+        unrelated_log.write_text(
+            f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\n"
+            "mandates/builder.md\n"
+            f"{'c' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1fcandidate with failing burst\n"
+            "stage-1/app.py\n"
+            f"{'b' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1funrelated stage work\n"
+            "stage-2/app.py\n"
+        )
+        unrelated_path = tmp / "unrelated.json"
+        unrelated = subprocess.run(
+            [sys.executable, str(FLOOR_DATA), str(room_path), str(unrelated_log), str(unrelated_path)],
+            capture_output=True,
+            text=True,
+        )
+        unrelated_floor = json.loads(unrelated_path.read_text()) if unrelated_path.exists() else {}
     verdicts = [
         (event["from"], verdict["verdict"], verdict["rev"])
         for event in floor.get("events", [])
@@ -415,9 +551,18 @@ def run_floor_verdict_checks():
         and verdicts == expected
         and totals.get("rejects") == 1
         and totals.get("accepts") == 1
-        and totals.get("seat_commits") == 1
+        and second.returncode == 0
+        and totals.get("commits") == 4
+        and totals.get("seat_commits") == 3
         and totals.get("rejects_followed_by_seat_commit") == 1
-        and floor.get("stage_first_commit_s") == {"1": 1.0}
+        and floor.get("stage_first_commit_s") == {"1": 0.5, "2": 0.5}
+        and [commit["sha"] for commit in floor.get("commits", [])] == [
+            "c" * 40, "b" * 40, "f" * 40, "9" * 40,
+        ]
+        and floor.get("commits", [])[-1].get("by_seat") is False
+        and floor_second == floor
+        and unrelated.returncode == 0
+        and unrelated_floor.get("totals", {}).get("rejects_followed_by_seat_commit") == 0
     )
     if good:
         print("ok   floor data counts only gatekeeper verdicts")
@@ -428,6 +573,75 @@ def run_floor_verdict_checks():
         print(result.stderr)
         print(verdicts)
         print(totals)
+
+
+def run_declared_seat_check():
+    room = export([
+        message(1, "text", "Human", "human", "dispatch"),
+        message(2, "text", sender="stephensookra/builder-cx", content="stage work complete"),
+    ])
+    room["messages"][-1]["insertedAt"] = "2026-01-01T00:00:01.000Z"
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        repo = tmp / "result"
+        repo.mkdir()
+        subprocess.run(["git", "-C", str(repo), "init", "-q"], check=True)
+        mandates = repo / "mandates"
+        mandates.mkdir()
+        (mandates / "builder.md").write_text("# Builder\n")
+        subprocess.run(["git", "-C", str(repo), "add", "mandates/builder.md"], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.name=Stephen Sookra",
+             "-c", "user.email=stephen@example.invalid", "commit", "-qm", "setup"],
+            check=True,
+        )
+        stage = repo / "stage-1"
+        stage.mkdir()
+        (stage / "app.py").write_text("pass\n")
+        subprocess.run(["git", "-C", str(repo), "add", "stage-1/app.py"], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.name=builder",
+             "-c", "user.email=builder@example.invalid", "commit", "-qm", "build stage"],
+            check=True,
+        )
+        intruder_stage = repo / "stage-2"
+        intruder_stage.mkdir()
+        (intruder_stage / "app.py").write_text("pass\n")
+        subprocess.run(["git", "-C", str(repo), "add", "stage-2/app.py"], check=True)
+        subprocess.run(
+            ["git", "-C", str(repo), "-c", "user.name=intruder",
+             "-c", "user.email=intruder@example.invalid", "commit", "-qm", "intruder stage"],
+            check=True,
+        )
+        room_path = tmp / "room.json"
+        floor_path = tmp / "floor.json"
+        room_path.write_text(json.dumps(room))
+        result = subprocess.run(
+            [sys.executable, str(FLOOR_DATA), str(room_path), str(repo), str(floor_path)],
+            capture_output=True,
+            text=True,
+        )
+        floor = json.loads(floor_path.read_text()) if floor_path.exists() else {}
+    commits = floor.get("commits", [])
+    good = (
+        result.returncode == 0
+        and floor.get("seats") == ["builder-cx"]
+        and floor.get("totals", {}).get("commits") == 2
+        and floor.get("totals", {}).get("seat_commits") == 1
+        and len(commits) == 2
+        and commits[0].get("author") == "builder"
+        and commits[0].get("by_seat") is True
+        and commits[1].get("author") == "intruder"
+        and commits[1].get("by_seat") is False
+    )
+    if good:
+        print("ok   committed mandates map temporary handles to canonical seat authors")
+    else:
+        failures.append("floor data canonical seat authors")
+        print("BAD  floor data did not recognize a canonical author behind a temporary handle")
+        print(result.stdout)
+        print(result.stderr)
+        print(floor)
 
 
 run_room("boundary report below lean threshold", boundary_room(), True)
@@ -518,6 +732,7 @@ run_room("development export may predate budget reports", export([
 
 run_factory_md_checks()
 run_floor_verdict_checks()
+run_declared_seat_check()
 run_judge_guide_checks()
 print(f"failures: {len(failures)}")
 sys.exit(1 if failures else 0)
