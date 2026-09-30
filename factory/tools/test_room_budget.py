@@ -8,6 +8,7 @@ import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CHECK_ROOM = ROOT / "factory" / "tools" / "check_room.py"
+FLOOR_DATA = ROOT / "factory" / "tools" / "floor_data.py"
 FACTORY_MD = ROOT / "factory" / "tools" / "factory_md.py"
 failures = []
 
@@ -140,6 +141,62 @@ def run_factory_md_checks():
             print("BAD  FACTORY.md accepted a stale room hash")
 
 
+def run_floor_verdict_checks():
+    room = export([
+        message(1, "text", "Human", "human", "dispatch"),
+        message(2, "text", sender="modeler", content="ACCEPT aaaaaaa model coverage"),
+        message(3, "text", sender="coordinator", content="REJECT bbbbbbb relayed decision"),
+        message(4, "text", sender="stephensookra/gatekeeper", content="REJECT ccccccc failing burst"),
+        message(5, "text", sender="stephensookra/gatekeeper", content="ACCEPT ddddddd stage accepted"),
+        message(6, "text", sender="auditor", content="ACCEPT eeeeeee audit closed"),
+        message(7, "text", sender="stephensookra/builder", content="fixed the rejected revision"),
+    ])
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        room_path = tmp / "room.json"
+        log_path = tmp / "commits.log"
+        floor_path = tmp / "floor.json"
+        room_path.write_text(json.dumps(room))
+        log_path.write_text(
+            f"{'f' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1ffix burst handling\n"
+            "stage-1/app.py\n"
+        )
+        result = subprocess.run(
+            [sys.executable, str(FLOOR_DATA), str(room_path), str(log_path), str(floor_path)],
+            capture_output=True,
+            text=True,
+        )
+        floor = json.loads(floor_path.read_text()) if floor_path.exists() else {}
+    verdicts = [
+        (event["from"], verdict["verdict"], verdict["rev"])
+        for event in floor.get("events", [])
+        for verdict in event["verdicts"]
+    ]
+    expected = [
+        ("gatekeeper", "REJECT", "ccccccc"),
+        ("gatekeeper", "ACCEPT", "ddddddd"),
+    ]
+    totals = floor.get("totals", {})
+    good = (
+        result.returncode == 0
+        and verdicts == expected
+        and totals.get("rejects") == 1
+        and totals.get("accepts") == 1
+        and totals.get("seat_commits") == 1
+        and totals.get("rejects_followed_by_seat_commit") == 1
+        and floor.get("stage_first_commit_s") == {"1": 1.0}
+    )
+    if good:
+        print("ok   floor data counts only gatekeeper verdicts")
+    else:
+        failures.append("floor data gatekeeper verdicts")
+        print("BAD  floor data counted a non-gatekeeper verdict")
+        print(result.stdout)
+        print(result.stderr)
+        print(verdicts)
+        print(totals)
+
+
 run_room("boundary report below lean threshold", boundary_room(), True)
 duplicate_accept = boundary_room()
 duplicate_accept["messages"].insert(
@@ -227,5 +284,6 @@ run_room("development export may predate budget reports", export([
 ]), True, allow_development=True)
 
 run_factory_md_checks()
+run_floor_verdict_checks()
 print(f"failures: {len(failures)}")
 sys.exit(1 if failures else 0)

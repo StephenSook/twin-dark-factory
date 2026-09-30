@@ -32,8 +32,12 @@ def load_room(path: pathlib.Path):
     names = {}
     kinds = {}
     for m in msgs:
-        names.setdefault(m["senderId"], m.get("senderName") or m["senderId"][:8])
-        kinds.setdefault(m["senderId"], m.get("senderType", "Agent"))
+        kind = m.get("senderType", "Agent")
+        name = m.get("senderName") or m["senderId"][:8]
+        if kind == "Agent":
+            name = name.rsplit("/", 1)[-1]
+        names.setdefault(m["senderId"], name)
+        kinds.setdefault(m["senderId"], kind)
     return raw, msgs, names, kinds
 
 
@@ -104,11 +108,15 @@ def main():
             continue
         body = m.get("content") or ""
         to = [names.get(x, x[:8]) for x in MENTION.findall(body)]
+        # Only the gatekeeper can make an authoritative acceptance decision. Other seats use
+        # ACCEPT and REJECT while reporting model checks or relaying a verdict, and counting
+        # those messages would invent extra stage boundaries in FACTORY.md and the deck.
         found = []
-        head = VERDICT.match(LEAD.sub("", body, count=1))
-        if head:
-            found.append(head.groups())
-        found += LINE_VERDICT.findall(body)
+        if who == "gatekeeper":
+            head = VERDICT.match(LEAD.sub("", body, count=1))
+            if head:
+                found.append(head.groups())
+            found += LINE_VERDICT.findall(body)
         verdicts = [{"verdict": v, "rev": rev[:7]} for v, rev in dict.fromkeys(found)]
         events.append({
             "id": m["id"], "t": round(ts(m["insertedAt"]) - t0, 1), "from": who,
