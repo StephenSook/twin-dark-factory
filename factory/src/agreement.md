@@ -49,7 +49,8 @@ ACCEPT <revision>
 REJECT <revision>: expected ..., observed ..., reproduce with ...
 
 Source control. Commit only under the identity configured for your seat, and check it before
-your first commit. Commit each finished work item with a message that says what changed and why.
+your first commit. Commit each finished work item that changes files, with a message that says
+what changed and why. A finished work item that exists only in the room does not require a commit.
 Never amend, rebase, squash or rewrite history. Never edit files another seat owns without
 agreeing it in the room first.
 
