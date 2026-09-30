@@ -8,6 +8,8 @@ Checks, each printed as PASS or FAIL, exit 1 on any failure:
   - messages are in time order with no duplicates;
   - the first text message is the human's dispatch (a truncated export starts mid-run);
   - no human text message follows the dispatch (the run was hands off);
+  - the room stays within the hard cap and every accepted stage has a near-boundary count report;
+  - a count at or above the lean threshold is preceded by the coordinator's lean announcement;
   - prints the file's sha256 and message counts for FACTORY.md.
 """
 import collections
@@ -20,6 +22,11 @@ import sys
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 TOP_KEYS = {"exportedAt", "room", "messages"}
 MSG_KEYS = {"id", "insertedAt", "messageType", "senderId", "senderType"}
+TEXT_KEYS = {"content", "senderName"}
+ROOM_LIMIT = 10_000
+LEAN_AT = 6_000
+ROOM_COUNT = re.compile(r"\bROOM COUNT\s+([0-9][0-9,]*)\s+OF\s+10000\b")
+ACCEPT = re.compile(r"\bACCEPT\s+([0-9a-f]{7,40})\b")
 
 
 def main():
@@ -37,8 +44,14 @@ def main():
 
     check(TOP_KEYS <= set(raw), f"export has BAND top-level keys {sorted(TOP_KEYS)}")
     check(bool(msgs), f"export holds messages ({len(msgs)})")
+    check(len(msgs) <= ROOM_LIMIT,
+          f"room message count is within BAND's hard limit ({len(msgs):,}/{ROOM_LIMIT:,})")
     missing = [m.get("id") for m in msgs if not MSG_KEYS <= set(m)]
     check(not missing, f"every message has {sorted(MSG_KEYS)} ({len(missing)} missing)")
+    text_missing = [m.get("id") for m in msgs
+                    if m.get("messageType") == "text" and not TEXT_KEYS <= set(m)]
+    check(not text_missing,
+          f"every text message has {sorted(TEXT_KEYS)} ({len(text_missing)} missing)")
     ids = [m.get("id", "") for m in msgs]
     check(all(UUID.match(i or "") for i in ids), "every message id is a UUID")
     check(len(set(ids)) == len(ids), "message ids are unique")
@@ -56,9 +69,68 @@ def main():
     else:
         check(not humans_after, label)
 
+    # A judged run proves that the coordinator watched the room budget at every accepted stage.
+    # Development exports made before this rule can opt out with the same explicit flag that
+    # permits their human nudges.
+    if allow_human:
+        print("NOTE  room-budget reports are not required for a development run")
+    else:
+        accepted = []
+        seen_revs = set()
+        for pos, m in enumerate(msgs):
+            if m.get("messageType") != "text" or m.get("senderType") != "Agent":
+                continue
+            if (m.get("senderName") or "").split("/")[-1] != "gatekeeper":
+                continue
+            for rev in ACCEPT.findall(m.get("content") or ""):
+                same_revision = any(old.startswith(rev) or rev.startswith(old)
+                                    for old in seen_revs)
+                if not same_revision:
+                    seen_revs.add(rev)
+                    accepted.append((pos, rev))
+
+        reports = []
+        for pos, m in enumerate(msgs):
+            if m.get("messageType") != "text" or m.get("senderType") != "Agent":
+                continue
+            if (m.get("senderName") or "").split("/")[-1] != "coordinator":
+                continue
+            for count in ROOM_COUNT.findall(m.get("content") or ""):
+                reports.append((pos, int(count.replace(",", ""))))
+
+        for i, (accept_pos, rev) in enumerate(accepted):
+            next_accept = accepted[i + 1][0] if i + 1 < len(accepted) else len(msgs)
+            stage_reports = [(pos, count) for pos, count in reports
+                             if accept_pos < pos < next_accept]
+            check(len(stage_reports) == 1,
+                  f"accepted revision {rev[:12]} has one coordinator ROOM COUNT report "
+                  f"({len(stage_reports)} found)")
+            if len(stage_reports) != 1:
+                continue
+            report_pos, count = stage_reports[0]
+            # The query tool result, an optional lean announcement and the report follow the
+            # observed snapshot. A generous 20-message bound catches stale or invented counts
+            # without depending on BAND's internal thought-event cadence.
+            check(count <= report_pos + 1 and report_pos + 1 - count <= 20,
+                  f"ROOM COUNT {count:,} is a near-boundary snapshot "
+                  f"(report is message {report_pos + 1:,})")
+            if report_pos + 1 >= LEAN_AT:
+                lean = any(
+                    n.get("messageType") == "text"
+                    and n.get("senderType") == "Agent"
+                    and (n.get("senderName") or "").split("/")[-1] == "coordinator"
+                    and "LEAN MODE" in (n.get("content") or "")
+                    for n in msgs[accept_pos + 1:report_pos]
+                )
+                check(lean, f"coordinator announced LEAN MODE before boundary report "
+                      f"{report_pos + 1:,}")
+
     kinds = collections.Counter(m.get("messageType") for m in msgs)
     print(f"INFO  sha256 {hashlib.sha256(raw_bytes).hexdigest()}")
     print(f"INFO  messages {len(msgs)}, by type {dict(sorted(kinds.items()))}")
+    mode = "lean threshold reached" if len(msgs) >= LEAN_AT else "below lean threshold"
+    print(f"INFO  room budget {len(msgs):,}/{ROOM_LIMIT:,} messages, "
+          f"{ROOM_LIMIT - len(msgs):,} remaining; {mode} ({LEAN_AT:,})")
     if msgs:
         print(f"INFO  span {times[0]} to {times[-1]}")
     if texts:

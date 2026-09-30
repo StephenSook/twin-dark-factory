@@ -78,6 +78,12 @@ twice became a mandate line.
 
 {{COST_TABLE}}
 
+Room message budget: **{{ROOM_MESSAGE_COUNT}} of 10,000** messages in the room export supplied to
+the generator. The generator cross-checks that export against the floor summary instead of trusting
+a copied count. The coordinator takes a stable snapshot at each stage boundary and announces lean
+mode at 6,000. The trigger keeps 40 percent of the hard limit in reserve for later work and reporting
+overhead. Lean mode batches shell work and reduces task updates without skipping checks or evidence.
+
 {{STAGE_TIMES}}
 
 ## Results

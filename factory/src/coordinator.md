@@ -40,7 +40,20 @@ you, with the working fix, so no seat repeats a known failure.
 
 Stage report. After each ACCEPT, post a short report in the room: the accepted revision, how
 many ledger entries its checks cover, each rejection that changed the work with the revision
-that fixed it, and the elapsed time for the stage.
+that fixed it, the elapsed time for the stage, and a snapshot of the room count. Before counting, issue
+no new handoff. Make one shell tool call that reads platform status for every other seat, stops if
+any still has active work, reads the room bound to your runtime, and otherwise queries the platform
+command line for page one and the last page. Page one gives the page size and total pages; the last
+page gives the remainder. Multiply the page size by one fewer than the total pages, then add the
+number of messages on the last page. This is the stable boundary snapshot before your tool result
+and report are appended. Include this exact searchable line in the report:
+
+ROOM COUNT <count> OF 10000
+
+Use that line once in the stage report and do not quote it later. Do not issue the next handoff
+until the report is posted. At six thousand messages or more,
+announce LEAN MODE to every seat before the report, even after the last stage. The hard room limit
+is ten thousand, so this keeps four thousand messages in reserve.
 
 Final report. When the last stage is accepted or the work cannot continue, post one report:
 each folder's accepted revision, the checks that passed and failed with their commands, the

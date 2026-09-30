@@ -65,6 +65,17 @@ of the result repository, the exact revision, and the commands to run. A message
 "see the room" is not a handoff. Split long content into numbered parts and mark the last part.
 Write in English, keep messages short, and never repeat a message the recipient already has.
 
+Room budget. Each tool call and its result consume two room messages. Group adjacent shell work
+into fewer, larger calls or a short script before you run it. Write verbose output to a scratch
+file and print only its counts, summary and failing lines. Keep task list events to real changes
+of owner or state; do not create or update a task for every substep.
+
+Lean mode. When the coordinator announces LEAN MODE, combine all adjacent shell work, make task
+list events only for a new owner, a blocker or completion, and trim only ancillary narration and
+output. Every passing or failing claim still carries the revision, command, exit status and key
+output required by Evidence below. Lean mode never permits a required check, handoff, independent
+review or evidence item to be skipped.
+
 Delivery. Seats only wake when a message reaches them, so a lost message stops the whole band.
 When a send reports an error, send the same message again until it posts. Never wait on a message
 for a fact the repository can answer: to learn whether another seat committed something, read the
@@ -126,6 +137,7 @@ directory, then read only the counts, the summary and the failing lines. Read th
 file you need, not the whole file, and do not reread a file that has not changed. Do not poll
 unchanged state. A handoff that needs a reply is not finished until the reply, a new commit or a
 restart has happened as the rule on stalled seats says; wait between checks with a sleep of sixty seconds
-command, which costs nothing. When your work item is done and reported, stop. After the
-coordinator's final report, stay silent. Never author the documents the human reserves for
+command. The sleep uses no model reasoning while it runs, but its call and result still consume two
+room messages, so combine the status and repository checks into one command per interval. When your
+work item is done and reported, stop. After the coordinator's final report, stay silent. Never author the documents the human reserves for
 themselves; the dispatched task names them.

@@ -43,7 +43,20 @@ you, with the working fix, so no seat repeats a known failure.
 
 Stage report. After each ACCEPT, post a short report in the room: the accepted revision, how
 many ledger entries its checks cover, each rejection that changed the work with the revision
-that fixed it, and the elapsed time for the stage.
+that fixed it, the elapsed time for the stage, and a snapshot of the room count. Before counting, issue
+no new handoff. Make one shell tool call that reads platform status for every other seat, stops if
+any still has active work, reads the room bound to your runtime, and otherwise queries the platform
+command line for page one and the last page. Page one gives the page size and total pages; the last
+page gives the remainder. Multiply the page size by one fewer than the total pages, then add the
+number of messages on the last page. This is the stable boundary snapshot before your tool result
+and report are appended. Include this exact searchable line in the report:
+
+ROOM COUNT <count> OF 10000
+
+Use that line once in the stage report and do not quote it later. Do not issue the next handoff
+until the report is posted. At six thousand messages or more,
+announce LEAN MODE to every seat before the report, even after the last stage. The hard room limit
+is ten thousand, so this keeps four thousand messages in reserve.
 
 Final report. When the last stage is accepted or the work cannot continue, post one report:
 each folder's accepted revision, the checks that passed and failed with their commands, the
@@ -63,6 +76,17 @@ A handoff is standalone: it carries the complete requirements for the work, the 
 of the result repository, the exact revision, and the commands to run. A message id, a task id or
 "see the room" is not a handoff. Split long content into numbered parts and mark the last part.
 Write in English, keep messages short, and never repeat a message the recipient already has.
+
+Room budget. Each tool call and its result consume two room messages. Group adjacent shell work
+into fewer, larger calls or a short script before you run it. Write verbose output to a scratch
+file and print only its counts, summary and failing lines. Keep task list events to real changes
+of owner or state; do not create or update a task for every substep.
+
+Lean mode. When the coordinator announces LEAN MODE, combine all adjacent shell work, make task
+list events only for a new owner, a blocker or completion, and trim only ancillary narration and
+output. Every passing or failing claim still carries the revision, command, exit status and key
+output required by Evidence below. Lean mode never permits a required check, handoff, independent
+review or evidence item to be skipped.
 
 Delivery. Seats only wake when a message reaches them, so a lost message stops the whole band.
 When a send reports an error, send the same message again until it posts. Never wait on a message
@@ -125,6 +149,7 @@ directory, then read only the counts, the summary and the failing lines. Read th
 file you need, not the whole file, and do not reread a file that has not changed. Do not poll
 unchanged state. A handoff that needs a reply is not finished until the reply, a new commit or a
 restart has happened as the rule on stalled seats says; wait between checks with a sleep of sixty seconds
-command, which costs nothing. When your work item is done and reported, stop. After the
-coordinator's final report, stay silent. Never author the documents the human reserves for
+command. The sleep uses no model reasoning while it runs, but its call and result still consume two
+room messages, so combine the status and repository checks into one command per interval. When your
+work item is done and reported, stop. After the coordinator's final report, stay silent. Never author the documents the human reserves for
 themselves; the dispatched task names them.

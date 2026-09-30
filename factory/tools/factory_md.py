@@ -1,7 +1,8 @@
 """Generate FACTORY.md from the run's own files, so no number is typed by hand.
 
-  python factory_md.py --repo <result repo> --floor floor.json --sessions usage-sessions.json \
-      --facts facts.json [--template FACTORY.template.md] [--draft] > FACTORY.md
+  python factory_md.py --repo <result repo> --room room.json --floor floor.json \
+      --sessions usage-sessions.json --facts facts.json \
+      [--template FACTORY.template.md] [--draft] > FACTORY.md
 
 Seats and models come from the committed mandates' Harness and Model lines; mandate fingerprints
 from their bytes; verdicts, times and hands-off counts from floor.json (floor_data.py); tokens and
@@ -118,12 +119,25 @@ def costs(sessions_path, room, facts, draft):
 
 def main():
     ap = argparse.ArgumentParser()
-    for a in ("--repo", "--floor", "--sessions", "--facts"):
+    for a in ("--repo", "--room", "--floor", "--sessions", "--facts"):
         ap.add_argument(a, required=True)
     ap.add_argument("--template", default=str(HERE.parent / "docs" / "FACTORY.template.md"))
     ap.add_argument("--draft", action="store_true")
     a = ap.parse_args()
     repo, floor, facts = pathlib.Path(a.repo), json.load(open(a.floor)), json.load(open(a.facts))
+    room_bytes = pathlib.Path(a.room).read_bytes()
+    room_export = json.loads(room_bytes)
+    room_messages = room_export.get("messages") or []
+    exported_room = room_export.get("room") or {}
+    exported_room_id = exported_room.get("id") if isinstance(exported_room, dict) else exported_room
+    floor_source = floor.get("generated_from") or {}
+    if exported_room_id != floor_source.get("room_id"):
+        sys.exit("room export and floor summary name different room ids")
+    if len(room_messages) != floor_source.get("messages"):
+        sys.exit("room export and floor summary have different message counts")
+    room_hash = hashlib.sha256(room_bytes).hexdigest()
+    if facts.get("room_sha256") and facts["room_sha256"] != room_hash:
+        sys.exit("room export sha256 differs from facts.json")
     T = floor["totals"]
     room = floor["generated_from"]["room_id"]
     accepts, seen = [], set()
@@ -140,7 +154,7 @@ def main():
         f"- **Stage reached.** The organizers' checker in isolated mode on a fresh clone: "
         + (", ".join(f"stage {k} {v}" for k, v in claims.items()) if isinstance(claims, dict) else str(claims)) + ".",
         f"- **Hands off.** {T['human_messages_after_dispatch']} human messages after the dispatch; "
-        f"room.json sha256 `{need(facts, 'room_sha256', a.draft)}`.",
+        f"room.json sha256 `{room_hash}`.",
         f"- **Evidence the band never saw.** Sealed holdout digest `{facts.get('holdout_digest', '')[:16]}` "
         f"committed before dispatch; score after the run: **{holdout}**.",
         f"- **Generic.** {generic if isinstance(generic, str) else json.dumps(generic)}",
@@ -155,6 +169,7 @@ def main():
         "{{VERDICT_TABLE}}": verdicts(floor),
         "{{FIRST_CATCH}}": first_catch(floor),
         "{{COST_TABLE}}": costs(a.sessions, room, facts, a.draft),
+        "{{ROOM_MESSAGE_COUNT}}": f"{len(room_messages):,}",
         "{{STAGE_TIMES}}": "Wall time from dispatch: " + ", ".join(f"stage {i} accepted at {mmss(e['t'])}" for i, (e, _) in enumerate(accepts, 1))
                            + f"; the whole run took {mmss(floor['duration_s'])}.",
         "{{RESULTS}}": "\n".join(results),
