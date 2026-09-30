@@ -26,6 +26,16 @@ jobs:
           git diff --exit-code -- factory/mandates
       - name: No track vocabulary in any mandate
         run: python factory/tools/lint_mandates.py kickoff factory/mandates
+      - name: Run dispatches match their generator and the seat list
+        run: |
+          python factory/tools/build_dispatch.py pocketful pocketful-judged --design /home/ubuntu/work/design-kit > /tmp/pj.md
+          diff factory/dispatch/pocketful-judged.md /tmp/pj.md
+          python factory/tools/build_dispatch.py tablekeeper tablekeeper-gen1 > /tmp/tk.md
+          diff factory/dispatch/tablekeeper-gen1.md /tmp/tk.md
+          for s in $(python -c 'import json; print(" ".join(json.load(open("factory/seats.json"))))'); do
+            grep -q "@stephensookra/$s" factory/dispatch/pocketful-judged.md
+            grep -Eq "where <seat> is .*\b$s\b" factory/dispatch/pocketful-judged.md
+          done
 
   guard:
     name: Commit guard and holdout seal
