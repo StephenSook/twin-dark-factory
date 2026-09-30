@@ -5,7 +5,8 @@
 #   preflight.sh <result repo> <factory dir> <kickoff dir> <dispatch file> [seats...]
 set -u
 REPO=$1 FACTORY=$2 KICKOFF=$3 DISPATCH=$4; shift 4
-SEATS=${*:-coordinator modeler builder surface gatekeeper}
+SEATS=${*:-$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))))' "$FACTORY/seats.json")}
+[ -n "$SEATS" ] || { echo "FAIL  no seats (seats.json unreadable?)"; exit 1; }
 fails=0
 pass() { echo "PASS  $*"; }
 fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
@@ -37,6 +38,11 @@ for s in $SEATS; do
     && pass "mandate $s starts with Harness and Model lines" || fail "mandate $s header lines"
 done
 chk "mandate vocabulary lint" python3 "$FACTORY/tools/lint_mandates.py" "$KICKOFF" "$FACTORY/mandates"
+# The commit guard authorizes every committed mandate, so that set must be exactly the seats.
+want=$(printf '%s\n' $SEATS | sort | tr '\n' ' ')
+have=$(git -C "$REPO" ls-tree --name-only HEAD mandates/ 2>/dev/null | sed -n 's#^mandates/\(.*\)\.md$#\1#p' | sort | tr '\n' ' ')
+[ "$have" = "$want" ] && pass "committed mandates are exactly the seats ($have)" \
+  || fail "committed mandates [$have] differ from seats [$want]"
 
 # Result repository: fresh, one human root commit, guard installed, seats will work in it.
 n=$(git -C "$REPO" rev-list --count HEAD 2>/dev/null || echo 0)

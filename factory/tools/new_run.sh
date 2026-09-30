@@ -5,12 +5,22 @@
 # before anything else can commit. Refuses to reuse an existing name.
 set -euo pipefail
 NAME=$1
-W=/home/ubuntu/work
+W=${WORK:-/home/ubuntu/work}
 R=$W/band-work/$NAME
 [ -e "$R" ] && { echo "refusing: $R already exists"; exit 1; }
-mkdir -p "$R/mandates" "$W/band-work/checks/$NAME"
 MANDATES=${MANDATES:-$W/factory/mandates}   # the baseline run uses factory/baseline
-cp "$MANDATES"/*.md "$R/mandates/"
+# Every committed mandate becomes an authorized commit author, so copy exactly the declared seats.
+if [ "$MANDATES" = "$W/factory/mandates" ]; then
+  SEATS=$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))))' "$W/factory/seats.json")
+else
+  SEATS=$(cd "$MANDATES" && ls *.md | sed 's/\.md$//' | tr '\n' ' ')
+fi
+[ -n "$SEATS" ] || { echo "refusing: no seats declared"; exit 1; }
+present=$(cd "$MANDATES" && ls *.md | sed 's/\.md$//' | sort | tr '\n' ' ')
+declared=$(printf '%s\n' $SEATS | sort | tr '\n' ' ')
+[ "$present" = "$declared" ] || { echo "refusing: $MANDATES has [$present], seats are [$declared]"; exit 1; }
+mkdir -p "$R/mandates" "$W/band-work/checks/$NAME"
+for s in $SEATS; do cp "$MANDATES/$s.md" "$R/mandates/"; done
 cd "$R"
 git init -q -b main
 git config user.name "Stephen Sookra"
