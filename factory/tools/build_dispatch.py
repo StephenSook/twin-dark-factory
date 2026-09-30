@@ -28,12 +28,15 @@ def main():
     band = "\n".join(f"- @stephensookra/{s}" for s in seats)
     ver = [f"@{s}" for s in ("modeler", "gatekeeper", "auditor") if s in seats]
     verifiers = ver[0] if len(ver) == 1 else ", ".join(ver[:-1]) + " and " + ver[-1]
-    for key, value in {"{BAND}": band, "{VERIFIERS}": verifiers,
+    everyone = ["coordinator"] + seats
+    authors = ", ".join(everyone[:-1]) + " or " + everyone[-1]
+    for key, value in {"{BAND}": band, "{VERIFIERS}": verifiers, "{SEATS}": authors,
                        "{KICKOFF}": KICKOFF, "{TRACK}": track, "{RESULT}": RESULT,
                        "{CHECKS}": f"/home/ubuntu/work/band-work/checks/{run}",
                        "{DESIGN}": design or ""}.items():
         text = text.replace(key, value)
-    left = [w for w in text.split() if w.startswith("{") and w.endswith("}")]
+    import re
+    left = re.findall(r"\{[A-Z_]+\}", text)
     if left:
         sys.exit(f"unfilled placeholders: {left}")
     sys.stdout.write(text)

@@ -32,7 +32,7 @@ Folder rules:
 Commits:
 - Every seat commits its own work under its own name:
   git -c user.name=<seat> -c user.email=<seat>@band.local commit -m "<what and why>"
-  where <seat> is coordinator, modeler, builder, surface or gatekeeper.
+  where <seat> is {SEATS}.
 - The repository refuses commits with any other author or outside stage folders. Never
   bypass that check and never rewrite history.
 
