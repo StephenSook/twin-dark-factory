@@ -27,13 +27,7 @@ jobs:
           test -z "$(git status --porcelain -- factory/mandates)"
       - name: No track vocabulary in any mandate
         run: python factory/tools/lint_mandates.py kickoff factory/mandates
-      - name: Run dispatches match their generator
-        run: |
-          python factory/tools/build_dispatch.py pocketful pocketful-judged --design /home/ubuntu/work/design-kit > /tmp/pj.md
-          diff factory/dispatch/pocketful-judged.md /tmp/pj.md
-          python factory/tools/build_dispatch.py tablekeeper tablekeeper-gen1 > /tmp/tk.md
-          diff factory/dispatch/tablekeeper-gen1.md /tmp/tk.md
-      - name: Seats agree across seats.json, committed mandates, role files and dispatches
+      - name: Every runnable dispatch is generated and names exactly the seats
         run: python factory/tools/check_dispatch.py
       - name: The seat check and the generator catch planted disagreements
         run: sh factory/tools/test_check_dispatch.sh

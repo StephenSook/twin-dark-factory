@@ -1,0 +1,5 @@
+{
+  "pocketful-judged": ["pocketful", "pocketful-judged", "--design", "/home/ubuntu/work/design-kit"],
+  "tablekeeper-gen1": ["tablekeeper", "tablekeeper-gen1"],
+  "baseline-solo": ["pocketful", "baseline-solo", "--template", "baseline-template.md"]
+}
