@@ -38,9 +38,11 @@ Commits:
 
 Check tool (from {KICKOFF}, with its virtual environment active):
   {KICKOFF}/.venv/bin/python -m harness run --track {TRACK} --repo {RESULT} --stage N --mode isolated --out {CHECKS}/sN-<attempt>
-For stage N it runs every suite up to N and then the next suite, which must fail. The
-provided checks are only a part of the checks used for grading; build from the written
-requirements, not from the checks.
+For stage N, run every suite through N that the check tool marks applicable. Run the next suite
+only when the tool marks it applicable; it must then fail. Record an explicit exemption reported
+by the tool as NOT RUN. Never add a defect just to make a later suite fail. The provided checks
+are only a part of the checks used for grading; build from the written requirements, not from the
+checks.
 
 For each stage: paste the complete stage requirements into every handoff, get the stage
 accepted by @gatekeeper, record the accepted revision in the room, then start the next

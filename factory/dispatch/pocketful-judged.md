@@ -42,9 +42,11 @@ Commits:
 
 Check tool (from /home/ubuntu/work/dark-factory-wearedevs, with its virtual environment active):
   /home/ubuntu/work/dark-factory-wearedevs/.venv/bin/python -m harness run --track pocketful --repo /home/ubuntu/work/band-work/current --stage N --mode isolated --out /home/ubuntu/work/band-work/checks/pocketful-judged/sN-<attempt>
-For stage N it runs every suite up to N and then the next suite, which must fail. The
-provided checks are only a part of the checks used for grading; build from the written
-requirements, not from the checks.
+For stage N, run every suite through N that the check tool marks applicable. Run the next suite
+only when the tool marks it applicable; it must then fail. Record an explicit exemption reported
+by the tool as NOT RUN. Never add a defect just to make a later suite fail. The provided checks
+are only a part of the checks used for grading; build from the written requirements, not from the
+checks.
 
 For each stage: paste the complete stage requirements into every handoff, get the stage
 accepted by @gatekeeper, record the accepted revision in the room, then start the next

@@ -46,6 +46,10 @@ open(p, "w").write(s.replace("{BAND}\n\n", "{BAND}\n\n- @stephensookra/solo\n\n"
 EOF
 regen "$D"; expect fail "extra handle after a blank line, regenerated" "$D"
 D=$(fresh); sed -i.b 's/{TRACK}/TRACK/' "$D/factory/dispatch/template.md"; rm "$D"/factory/dispatch/*.b; regen "$D"; expect fail "braces stripped from one {TRACK}, regenerated" "$D"
+D=$(fresh); sed -i.b 's/run every suite through N/skip every suite through N/' "$D/factory/dispatch/template.md"; rm "$D"/factory/dispatch/*.b; regen "$D"; expect fail "current-stage applicability rule inverted, regenerated" "$D"
+D=$(fresh); sed -i.b 's/Run the next suite/Skip the next suite/' "$D/factory/dispatch/template.md"; rm "$D"/factory/dispatch/*.b; regen "$D"; expect fail "next-stage applicability rule inverted, regenerated" "$D"
+D=$(fresh); sed -i.b 's/Record an explicit exemption/Never record an explicit exemption/' "$D/factory/dispatch/template.md"; rm "$D"/factory/dispatch/*.b; regen "$D"; expect fail "explicit exemption rule inverted, regenerated" "$D"
+D=$(fresh); sed -i.b 's/Never add a defect just to make a later suite fail\./Add a defect to make a later suite fail./' "$D/factory/dispatch/template.md"; rm "$D"/factory/dispatch/*.b; regen "$D"; expect fail "no-defect rule inverted, regenerated" "$D"
 
 for bad in '{TRACK1}' '{Track}' 'TRACK'; do
   D=$(fresh); sed -i.b "s/{TRACK}/$bad/" "$D/factory/dispatch/template.md"

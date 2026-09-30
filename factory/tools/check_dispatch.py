@@ -21,6 +21,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
 F = ROOT / "factory"
 D = F / "dispatch"
 TEMPLATES = {"template.md", "baseline-template.md"}
+STAGE_CHECK_RULES = (
+    "For stage N, run every suite through N that the check tool marks applicable.",
+    "Run the next suite only when the tool marks it applicable; it must then fail.",
+    "Record an explicit exemption reported by the tool as NOT RUN.",
+    "Never add a defect just to make a later suite fail.",
+)
 problems = []
 
 
@@ -59,6 +65,10 @@ for run, args in runs.items():
         problems.append(f"{run}: unresolved brace")
     template = args[args.index("--template") + 1] if "--template" in args else "template.md"
     if template == "template.md":
+        normalized = " ".join(text.split())
+        for rule in STAGE_CHECK_RULES:
+            if normalized.count(rule) != 1:
+                problems.append(f"{run}: stage-check rule is not present exactly once: {rule}")
         lines = text.splitlines()
         heads = [i for i, l in enumerate(lines) if l.startswith("Band (")]
         ends = [i for i, l in enumerate(lines) if l.startswith("Paths:")]
