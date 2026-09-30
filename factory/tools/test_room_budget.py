@@ -10,6 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 CHECK_ROOM = ROOT / "factory" / "tools" / "check_room.py"
 FLOOR_DATA = ROOT / "factory" / "tools" / "floor_data.py"
 FACTORY_MD = ROOT / "factory" / "tools" / "factory_md.py"
+JUDGE_GUIDE = ROOT / "factory" / "tools" / "judge_guide.py"
 failures = []
 
 
@@ -139,6 +140,238 @@ def run_factory_md_checks():
         else:
             failures.append("FACTORY.md stale room hash")
             print("BAD  FACTORY.md accepted a stale room hash")
+
+        facts_path.write_text(json.dumps({
+            "track": "toy",
+            "development_run": True,
+            "room_sha256": room_hash,
+            "holdout_note": "Pocketful-only private attacks do not apply to the Toy track.",
+            "cost_note": "Development usage note.",
+        }))
+        result = subprocess.run(command, capture_output=True, text=True)
+        good = (
+            result.returncode == 0
+            and "Private attack suite" in result.stdout
+            and "Pocketful-only private attacks do not apply" in result.stdout
+            and "Development usage note" in result.stdout
+            and "Development autonomy" in result.stdout
+            and "Hands off" not in result.stdout
+            and "Evidence the band never saw" not in result.stdout
+            and "Sealed holdout digest" not in result.stdout
+        )
+        if good:
+            print("ok   FACTORY.md records a track-scoped holdout exemption")
+        else:
+            failures.append("FACTORY.md track-scoped holdout")
+            print("BAD  FACTORY.md misstated an inapplicable holdout")
+            print(result.stdout)
+            print(result.stderr)
+
+        strict_facts = {
+            "track": "toy",
+            "development_run": True,
+            "stage_claims": {"1": "claims its stage"},
+            "holdout_note": "Pocketful-only private attacks do not apply to the Toy track.",
+            "genericity": "Not run in this development test.",
+            "baseline": "Not run in this development test.",
+            "check_commands": ["python -m harness run --track toy --repo . --all --mode isolated"],
+            "limits": ["Development run."],
+            "cost_note": "Development usage note.",
+            "room_sha256": room_hash,
+        }
+        facts_path.write_text(json.dumps(strict_facts))
+        strict_command = command[:-1]
+        result = subprocess.run(strict_command, capture_output=True, text=True)
+        if result.returncode != 0 and "no usage sessions are attributed" in result.stderr:
+            print("ok   FACTORY.md refuses an empty usage export outside draft mode")
+        else:
+            failures.append("FACTORY.md empty usage export")
+            print("BAD  FACTORY.md accepted an empty measured usage export")
+            print(result.stdout)
+            print(result.stderr)
+
+        sessions_path.write_text(json.dumps({"sessions": [{
+            "attribution": {"chatIds": ["room-test"], "peerName": "stephensookra/coordinator-cx"},
+            "models": [{"model": "gpt-6-astra"}],
+            "inputTokens": 10,
+            "outputTokens": 5,
+            "cacheCreationTokens": 0,
+            "cacheReadTokens": 20,
+            "totalCost": 0.25,
+        }]}))
+        result = subprocess.run(strict_command, capture_output=True, text=True)
+        if result.returncode == 0 and "| **total** | | 35 | 0.25 |" in result.stdout:
+            print("ok   FACTORY.md accepts attributed development usage")
+        else:
+            failures.append("FACTORY.md attributed usage")
+            print("BAD  FACTORY.md refused attributed development usage")
+            print(result.stdout)
+            print(result.stderr)
+
+        strict_facts["holdout_applicable"] = True
+        strict_facts["holdout_score"] = "73/73"
+        strict_facts["holdout_digest"] = "a" * 64
+        facts_path.write_text(json.dumps(strict_facts))
+        result = subprocess.run(strict_command, capture_output=True, text=True)
+        if result.returncode != 0 and "holdout_applicable must agree with the run track" in result.stderr:
+            print("ok   FACTORY.md refuses a cross-track holdout claim")
+        else:
+            failures.append("FACTORY.md cross-track holdout")
+            print("BAD  FACTORY.md accepted a cross-track holdout claim")
+
+        pocketful_facts = dict(strict_facts)
+        pocketful_facts["track"] = "pocketful"
+        pocketful_facts.pop("holdout_applicable")
+        facts_path.write_text(json.dumps(pocketful_facts))
+        result = subprocess.run(strict_command, capture_output=True, text=True)
+        if result.returncode == 0 and "Sealed holdout digest `aaaaaaaaaaaaaaaa`" in result.stdout:
+            print("ok   FACTORY.md accepts complete Pocketful holdout evidence")
+        else:
+            failures.append("FACTORY.md complete holdout")
+            print("BAD  FACTORY.md refused complete Pocketful holdout evidence")
+            print(result.stdout)
+            print(result.stderr)
+
+        for label, update, expected_error in (
+            ("short digest", {"holdout_digest": "abc"}, "holdout_digest must be 64"),
+            ("boolean digest", {"holdout_digest": True}, "holdout_digest must be 64"),
+            ("boolean score", {"holdout_score": True}, "holdout_score must use"),
+            ("score above total", {"holdout_score": "74/73"}, "passed <= total"),
+            ("zero score total", {"holdout_score": "0/0"}, "total > 0"),
+            ("false applicability", {"holdout_applicable": False}, "must agree with the run track"),
+            ("null applicability", {"holdout_applicable": None}, "must be boolean"),
+        ):
+            bad = dict(pocketful_facts)
+            bad.update(update)
+            facts_path.write_text(json.dumps(bad))
+            result = subprocess.run(strict_command, capture_output=True, text=True)
+            if result.returncode != 0 and expected_error in result.stderr:
+                print(f"ok   FACTORY.md refuses {label}")
+            else:
+                failures.append(f"FACTORY.md {label}")
+                print(f"BAD  FACTORY.md accepted {label}")
+
+
+def run_judge_guide_checks():
+    floor = {
+        "events": [
+            {"from": "gatekeeper", "human": False, "t": 1, "id": "reject-id",
+             "preview": "REJECT ccccccc failing burst", "verdicts": [{"verdict": "REJECT", "rev": "ccccccc"}]},
+            {"from": "gatekeeper", "human": False, "t": 2, "id": "accept-id",
+             "preview": "ACCEPT ddddddd", "verdicts": [{"verdict": "ACCEPT", "rev": "ddddddd"}]},
+            {"from": "coordinator-cx", "human": False, "t": 3, "id": "final-id",
+             "preview": "FINAL REPORT", "verdicts": []},
+            {"from": "auditor", "human": False, "t": 4, "id": "audit-id",
+             "preview": "Quoted FINAL REPORT concern", "verdicts": []},
+        ],
+        "commits": [
+            {"by_seat": True, "t": 1.5, "author": "builder", "sha": "f" * 40, "subject": "fix burst"},
+        ],
+        "totals": {"rejects": 1, "human_messages_after_dispatch": 3},
+    }
+    facts = {
+        "track": "toy",
+        "holdout_note": "Pocketful-only private attacks do not apply to the Toy track.",
+        "coordinator_handle": "coordinator-cx",
+        "one_line": "Twin development run: six agents, two model families.",
+        "room_sha256": "abc123",
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        floor_path = tmp / "floor.json"
+        facts_path = tmp / "facts.json"
+        floor_path.write_text(json.dumps(floor))
+        facts_path.write_text(json.dumps(facts))
+        result = subprocess.run(
+            [sys.executable, str(JUDGE_GUIDE), str(floor_path), str(facts_path)],
+            capture_output=True,
+            text=True,
+        )
+    good = (
+        result.returncode == 0
+        and "--track toy" in result.stdout
+        and "--track pocketful" not in result.stdout
+        and "Development autonomy" in result.stdout
+        and "human recovery messages" in result.stdout
+        and "Pocketful-only private attacks do not apply" in result.stdout
+        and "Evidence the band never saw" not in result.stdout
+        and "final-id" in result.stdout
+        and "audit-id" not in result.stdout
+    )
+    if good:
+        print("ok   judge guide reports the run's track and development limits")
+    else:
+        failures.append("judge guide track scope")
+        print("BAD  judge guide misstated the run scope")
+        print(result.stdout)
+        print(result.stderr)
+
+    facts["holdout_applicable"] = True
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        floor_path = tmp / "floor.json"
+        facts_path = tmp / "facts.json"
+        floor_path.write_text(json.dumps(floor))
+        facts_path.write_text(json.dumps(facts))
+        result = subprocess.run(
+            [sys.executable, str(JUDGE_GUIDE), str(floor_path), str(facts_path)],
+            capture_output=True,
+            text=True,
+        )
+    if result.returncode != 0 and "holdout_applicable must agree with the run track" in result.stderr:
+        print("ok   judge guide refuses a cross-track holdout claim")
+    else:
+        failures.append("judge guide cross-track holdout")
+        print("BAD  judge guide accepted a cross-track holdout claim")
+
+    pocketful_facts = dict(facts)
+    pocketful_facts["track"] = "pocketful"
+    pocketful_facts.pop("holdout_applicable")
+    pocketful_facts["holdout_digest"] = "a" * 64
+    pocketful_facts["holdout_score"] = "73/73"
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        floor_path = tmp / "floor.json"
+        facts_path = tmp / "facts.json"
+        floor_path.write_text(json.dumps(floor))
+        facts_path.write_text(json.dumps(pocketful_facts))
+        result = subprocess.run(
+            [sys.executable, str(JUDGE_GUIDE), str(floor_path), str(facts_path)],
+            capture_output=True,
+            text=True,
+        )
+    if result.returncode == 0 and "`aaaaaaaaaaaaaaaa`" in result.stdout:
+        print("ok   judge guide accepts complete Pocketful holdout evidence")
+    else:
+        failures.append("judge guide complete holdout")
+        print("BAD  judge guide refused complete Pocketful holdout evidence")
+
+    for label, update, expected_error in (
+        ("missing digest", {"holdout_digest": None}, "holdout_digest must be 64"),
+        ("boolean digest", {"holdout_digest": True}, "holdout_digest must be 64"),
+        ("score above total", {"holdout_score": "74/73"}, "passed <= total"),
+        ("zero score total", {"holdout_score": "0/0"}, "total > 0"),
+        ("false applicability", {"holdout_applicable": False}, "must agree with the run track"),
+        ("null applicability", {"holdout_applicable": None}, "must be boolean"),
+    ):
+        bad = dict(pocketful_facts)
+        bad.update(update)
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = pathlib.Path(tmp)
+            floor_path = tmp / "floor.json"
+            facts_path = tmp / "facts.json"
+            floor_path.write_text(json.dumps(floor))
+            facts_path.write_text(json.dumps(bad))
+            result = subprocess.run(
+                [sys.executable, str(JUDGE_GUIDE), str(floor_path), str(facts_path)],
+                capture_output=True,
+                text=True,
+            )
+        if result.returncode != 0 and expected_error in result.stderr:
+            print(f"ok   judge guide refuses {label}")
+        else:
+            failures.append(f"judge guide {label}")
+            print(f"BAD  judge guide accepted {label}")
 
 
 def run_floor_verdict_checks():
@@ -285,5 +518,6 @@ run_room("development export may predate budget reports", export([
 
 run_factory_md_checks()
 run_floor_verdict_checks()
+run_judge_guide_checks()
 print(f"failures: {len(failures)}")
 sys.exit(1 if failures else 0)

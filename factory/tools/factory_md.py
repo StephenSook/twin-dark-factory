@@ -43,6 +43,31 @@ def mmss(s):
     return f"{h}h {m:02d}m" if h else f"{m}m"
 
 
+def holdout_applies(facts, track):
+    expected = track == "pocketful"
+    if "holdout_applicable" in facts:
+        value = facts["holdout_applicable"]
+        if type(value) is not bool:
+            sys.exit("holdout_applicable must be boolean")
+        if value != expected:
+            sys.exit("holdout_applicable must agree with the run track")
+    return expected
+
+
+def validate_holdout(facts):
+    digest = facts.get("holdout_digest")
+    score = facts.get("holdout_score")
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+        sys.exit("holdout_digest must be 64 lowercase hexadecimal characters")
+    match = re.fullmatch(r"([0-9]+)/([0-9]+)", score) if isinstance(score, str) else None
+    if match is None:
+        sys.exit("holdout_score must use passed/total form")
+    passed, total = map(int, match.groups())
+    if total == 0 or passed > total:
+        sys.exit("holdout_score must satisfy 0 <= passed <= total and total > 0")
+    return score, digest
+
+
 def seats_table(repo):
     rows = ["| Seat | Harness | Model | Owns | Never |", "|---|---|---|---|---|"]
     for f in sorted((repo / "mandates").glob("*.md")):
@@ -94,7 +119,7 @@ def first_catch(floor):
     return "no rejection in this run."
 
 
-def costs(sessions_path, room, facts, draft):
+def costs(sessions_path, room, facts, draft, development):
     rows = collections.defaultdict(lambda: [set(), 0, 0.0])
     for s in json.load(open(sessions_path))["sessions"]:
         att = s.get("attribution") or {}
@@ -104,16 +129,23 @@ def costs(sessions_path, room, facts, draft):
         r[0].update(m["model"] for m in s.get("models") or [])
         r[1] += sum(s.get(k) or 0 for k in ("inputTokens", "outputTokens", "cacheCreationTokens", "cacheReadTokens"))
         r[2] += s.get("totalCost") or 0.0
+    if not rows and not draft:
+        sys.exit("no usage sessions are attributed to this room")
     out = ["| Seat | Model | Tokens | List-price equivalent (USD) |", "|---|---|---|---|"]
     for seat, (models, tok, usd) in sorted(rows.items(), key=lambda kv: -kv[1][2]):
         out.append(f"| {seat} | {', '.join(sorted(models))} | {tok:,} | {usd:,.2f} |")
     tok = sum(v[1] for v in rows.values())
     usd = sum(v[2] for v in rows.values())
     out.append(f"| **total** | | {tok:,} | {usd:,.2f} |")
-    fl = need(facts, "featherless_usd", draft)
-    out.append("\nThe Claude and Codex seats ran on flat-rate subscriptions; the dollars above are Band's "
-               "own list-price estimate from its usage export, not a bill. The auditor ran on Featherless "
-               f"credits, metered: **${fl}** for the whole run." if fl is not None else "")
+    if facts.get("cost_note"):
+        if not development:
+            sys.exit("cost_note is allowed only for a development run")
+        out.append("\n" + facts["cost_note"])
+    else:
+        fl = need(facts, "featherless_usd", draft)
+        out.append("\nThe Claude and Codex seats ran on flat-rate subscriptions; the dollars above are Band's "
+                   "own list-price estimate from its usage export, not a bill. The auditor ran on Featherless "
+                   f"credits, metered: **${fl}** for the whole run." if fl is not None else "")
     return "\n".join(out)
 
 
@@ -125,6 +157,9 @@ def main():
     ap.add_argument("--draft", action="store_true")
     a = ap.parse_args()
     repo, floor, facts = pathlib.Path(a.repo), json.load(open(a.floor)), json.load(open(a.facts))
+    track = facts.get("track", "pocketful")
+    if not re.fullmatch(r"[a-z0-9_-]+", track):
+        sys.exit("facts track must contain only lowercase letters, digits, underscores or hyphens")
     room_bytes = pathlib.Path(a.room).read_bytes()
     room_export = json.loads(room_bytes)
     room_messages = room_export.get("messages") or []
@@ -140,6 +175,7 @@ def main():
         sys.exit("room export sha256 differs from facts.json")
     T = floor["totals"]
     room = floor["generated_from"]["room_id"]
+    development = bool(facts.get("development_run")) or T["human_messages_after_dispatch"] > 0
     accepts, seen = [], set()
     for e in floor["events"]:
         for v in e["verdicts"]:
@@ -147,16 +183,40 @@ def main():
                 seen.add(v["rev"])
                 accepts.append((e, v["rev"]))
     claims = need(facts, "stage_claims", a.draft)
-    holdout = need(facts, "holdout_score", a.draft)
     generic = need(facts, "genericity", a.draft)
     baseline = need(facts, "baseline", a.draft)
+    holdout_applicable = holdout_applies(facts, track)
+    if holdout_applicable:
+        holdout = need(facts, "holdout_score", a.draft)
+        holdout_digest = need(facts, "holdout_digest", a.draft)
+        supplied = any(
+            key in facts and facts[key] not in (None, "", [], {})
+            for key in ("holdout_score", "holdout_digest")
+        )
+        if not a.draft or supplied:
+            holdout, holdout_digest = validate_holdout(facts)
+        holdout_result = (
+            f"- **Evidence the band never saw.** Sealed holdout digest `{str(holdout_digest)[:16]}` "
+            f"committed before dispatch; score after the run: **{holdout}**."
+        )
+    else:
+        holdout_note = need(facts, "holdout_note", a.draft)
+        holdout_result = f"- **Private attack suite.** {holdout_note}"
+    if development:
+        autonomy_result = (
+            f"- **Development autonomy.** {T['human_messages_after_dispatch']} human recovery messages "
+            f"after the dispatch; room.json sha256 `{room_hash}`."
+        )
+    else:
+        autonomy_result = (
+            f"- **Hands off.** {T['human_messages_after_dispatch']} human messages after the dispatch; "
+            f"room.json sha256 `{room_hash}`."
+        )
     results = [
         f"- **Stage reached.** The organizers' checker in isolated mode on a fresh clone: "
         + (", ".join(f"stage {k} {v}" for k, v in claims.items()) if isinstance(claims, dict) else str(claims)) + ".",
-        f"- **Hands off.** {T['human_messages_after_dispatch']} human messages after the dispatch; "
-        f"room.json sha256 `{room_hash}`.",
-        f"- **Evidence the band never saw.** Sealed holdout digest `{facts.get('holdout_digest', '')[:16]}` "
-        f"committed before dispatch; score after the run: **{holdout}**.",
+        autonomy_result,
+        holdout_result,
         f"- **Generic.** {generic if isinstance(generic, str) else json.dumps(generic)}",
         f"- **One agent against the band.** {baseline if isinstance(baseline, str) else json.dumps(baseline)}",
     ]
@@ -168,7 +228,7 @@ def main():
                             f"{T['seat_commits']} of {T['commits']} commits were made by seats."),
         "{{VERDICT_TABLE}}": verdicts(floor),
         "{{FIRST_CATCH}}": first_catch(floor),
-        "{{COST_TABLE}}": costs(a.sessions, room, facts, a.draft),
+        "{{COST_TABLE}}": costs(a.sessions, room, facts, a.draft, development),
         "{{ROOM_MESSAGE_COUNT}}": f"{len(room_messages):,}",
         "{{STAGE_TIMES}}": "Wall time from dispatch: " + ", ".join(f"stage {i} accepted at {mmss(e['t'])}" for i, (e, _) in enumerate(accepts, 1))
                            + f"; the whole run took {mmss(floor['duration_s'])}.",
