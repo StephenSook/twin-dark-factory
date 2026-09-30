@@ -23,6 +23,8 @@ mkdir -p "$R/mandates" "$W/band-work/checks/$NAME"
 for s in $SEATS; do cp "$MANDATES/$s.md" "$R/mandates/"; done
 cd "$R"
 git init -q -b main
+mkdir -p .git/factory
+chmod 700 .git/factory
 git config user.name "Stephen Sookra"
 git config user.email "stephensookra@gmail.com"
 cp "$W/factory/tools/pre-commit" .git/hooks/pre-commit

@@ -2,9 +2,10 @@
 # Pre-dispatch preflight on the factory machine. Run right before the one dispatch of a judged run.
 # Every line is PASS or FAIL; exit 1 on any FAIL. Nothing here changes state.
 #
-#   preflight.sh <result repo> <factory dir> <kickoff dir> <dispatch file> [seats...]
+#   preflight.sh <result repo> <factory dir> <kickoff dir> <dispatch file> <room id> [seats...]
 set -u
-REPO=$1 FACTORY=$2 KICKOFF=$3 DISPATCH=$4; shift 4
+[ "$#" -ge 5 ] || { echo "FAIL  usage: preflight.sh <result repo> <factory dir> <kickoff dir> <dispatch file> <room id> [seats...]"; exit 1; }
+REPO=$1 FACTORY=$2 KICKOFF=$3 DISPATCH=$4 ROOM_ID=$5; shift 5
 SEATS=${*:-$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1]))))' "$FACTORY/seats.json")}
 [ -n "$SEATS" ] || { echo "FAIL  no seats (seats.json unreadable?)"; exit 1; }
 fails=0
@@ -54,6 +55,9 @@ cmp -s "$FACTORY/tools/pre-commit" "$REPO/.git/hooks/pre-commit" && [ -x "$REPO/
   && pass "commit guard installed and current" || fail "commit guard missing or stale"
 [ "$(readlink -f /home/ubuntu/work/band-work/current)" = "$(readlink -f "$REPO")" ] \
   && pass "seat working directory points at the result repo" || fail "current -> $(readlink -f /home/ubuntu/work/band-work/current)"
+chk "external room meter is attached to room $ROOM_ID" \
+  python3 "$FACTORY/tools/room_meter.py" status --repo "$REPO" --room "$ROOM_ID"
+chk "external room meter publishes a fresh anchored count" "$REPO/.git/factory/count"
 
 # Seat accounts and billing
 python3 -c "import json,sys;d=json.load(open('$HOME/.claude/settings.json'));sys.exit(0 if d.get('includeCoAuthoredBy') is False and (d.get('attribution') or {}).get('commit')=='' else 1)" \

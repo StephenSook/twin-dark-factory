@@ -33,6 +33,8 @@ jobs:
         run: sh factory/tools/test_check_dispatch.sh
       - name: Room-budget gates catch missing reports, cap overflow and stale summaries
         run: python factory/tools/test_room_budget.py
+      - name: External room meter counts exact snapshots and fails closed
+        run: python factory/tools/test_room_meter.py
 
   guard:
     name: Commit guard and holdout seal

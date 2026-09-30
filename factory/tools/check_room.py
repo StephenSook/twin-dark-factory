@@ -8,7 +8,7 @@ Checks, each printed as PASS or FAIL, exit 1 on any failure:
   - messages are in time order with no duplicates;
   - the first text message is the human's dispatch (a truncated export starts mid-run);
   - no human text message follows the dispatch (the run was hands off);
-  - the room stays within the hard cap and every accepted stage has a near-boundary count report;
+  - the room stays within the hard cap and every accepted stage has an exact anchored count report;
   - a count at or above the lean threshold is preceded by the coordinator's lean announcement;
   - prints the file's sha256 and message counts for FACTORY.md.
 """
@@ -19,13 +19,16 @@ import pathlib
 import re
 import sys
 
-UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+UUID_TEXT = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+UUID = re.compile(rf"^{UUID_TEXT}$")
 TOP_KEYS = {"exportedAt", "room", "messages"}
 MSG_KEYS = {"id", "insertedAt", "messageType", "senderId", "senderType"}
 TEXT_KEYS = {"content", "senderName"}
 ROOM_LIMIT = 10_000
 LEAN_AT = 6_000
-ROOM_COUNT = re.compile(r"\bROOM COUNT\s+([0-9][0-9,]*)\s+OF\s+10000\b")
+ROOM_COUNT = re.compile(
+    rf"\bROOM COUNT\s+([0-9][0-9,]*)\s+OF\s+10000\s+AFTER\s+({UUID_TEXT})\b"
+)
 ACCEPT = re.compile(r"\bACCEPT\s+([0-9a-f]{7,40})\b")
 
 
@@ -95,26 +98,31 @@ def main():
                 continue
             if (m.get("senderName") or "").split("/")[-1] != "coordinator":
                 continue
-            for count in ROOM_COUNT.findall(m.get("content") or ""):
-                reports.append((pos, int(count.replace(",", ""))))
+            for count, anchor in ROOM_COUNT.findall(m.get("content") or ""):
+                reports.append((pos, int(count.replace(",", "")), anchor))
+
+        anchors = [anchor for _pos, _count, anchor in reports]
+        check(len(set(anchors)) == len(anchors),
+              "each ROOM COUNT report uses a distinct boundary anchor")
 
         for i, (accept_pos, rev) in enumerate(accepted):
             next_accept = accepted[i + 1][0] if i + 1 < len(accepted) else len(msgs)
-            stage_reports = [(pos, count) for pos, count in reports
+            stage_reports = [(pos, count, anchor) for pos, count, anchor in reports
                              if accept_pos < pos < next_accept]
             check(len(stage_reports) == 1,
                   f"accepted revision {rev[:12]} has one coordinator ROOM COUNT report "
                   f"({len(stage_reports)} found)")
             if len(stage_reports) != 1:
                 continue
-            report_pos, count = stage_reports[0]
-            # The query tool result, an optional lean announcement and the report follow the
-            # observed snapshot. A generous 20-message bound catches stale or invented counts
-            # without depending on BAND's internal thought-event cadence.
-            check(count <= report_pos + 1 and report_pos + 1 - count <= 20,
-                  f"ROOM COUNT {count:,} is a near-boundary snapshot "
-                  f"(report is message {report_pos + 1:,})")
-            if report_pos + 1 >= LEAN_AT:
+            report_pos, count, anchor = stage_reports[0]
+            count_in_range = 1 <= count <= len(msgs)
+            check(count_in_range, f"ROOM COUNT {count:,} indexes the exported room")
+            anchor_matches = count_in_range and msgs[count - 1].get("id") == anchor
+            check(anchor_matches,
+                  f"ROOM COUNT {count:,} anchor is exported message {count:,}")
+            check(count_in_range and accept_pos <= count - 1 < report_pos,
+                  f"ROOM COUNT {count:,} snapshot follows ACCEPT and precedes its report")
+            if count >= LEAN_AT:
                 lean = any(
                     n.get("messageType") == "text"
                     and n.get("senderType") == "Agent"
@@ -123,7 +131,7 @@ def main():
                     for n in msgs[accept_pos + 1:report_pos]
                 )
                 check(lean, f"coordinator announced LEAN MODE before boundary report "
-                      f"{report_pos + 1:,}")
+                      f"anchored at {count:,}")
 
     kinds = collections.Counter(m.get("messageType") for m in msgs)
     print(f"INFO  sha256 {hashlib.sha256(raw_bytes).hexdigest()}")

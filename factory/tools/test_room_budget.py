@@ -41,13 +41,14 @@ def boundary_room(snapshot=3, announce_lean=False):
         messages.append(message(len(messages) + 1, "thought"))
     messages.append(message(len(messages) + 1, "tool_call"))
     assert len(messages) == snapshot
+    anchor = messages[-1]["id"]
     messages.append(message(len(messages) + 1, "tool_result"))
     if announce_lean:
         messages.append(message(len(messages) + 1, "text", content="LEAN MODE"))
     messages.append(message(
         len(messages) + 1,
         "text",
-        content=f"stage report\nROOM COUNT {snapshot:,} OF 10000",
+        content=f"stage report\nROOM COUNT {snapshot:,} OF 10000 AFTER {anchor}",
     ))
     return export(messages)
 
@@ -145,25 +146,70 @@ duplicate_accept["messages"].insert(
     2,
     message(99_999, "text", sender="gatekeeper", content="ACCEPT abcdef1234567890"),
 )
-duplicate_accept["messages"][-1]["content"] = "stage report\nROOM COUNT 4 OF 10000"
+duplicate_anchor = duplicate_accept["messages"][3]["id"]
+duplicate_accept["messages"][-1]["content"] = (
+    f"stage report\nROOM COUNT 4 OF 10000 AFTER {duplicate_anchor}"
+)
 run_room("short and full forms of one accepted revision count once", duplicate_accept, True)
 run_room("accepted stage without boundary report", export([
     message(1, "text", "Human", "human", "dispatch"),
     message(2, "text", sender="gatekeeper", content="ACCEPT abcdef1"),
 ]), False, expected="has one coordinator ROOM COUNT report")
+
+pre_accept_anchor = export([
+    message(1, "text", "Human", "human", "dispatch"),
+    message(2, "thought"),
+    message(3, "text", sender="gatekeeper", content="ACCEPT abcdef1"),
+    message(4, "text", content=f"ROOM COUNT 2 OF 10000 AFTER {message(2, 'thought')['id']}"),
+])
+run_room("an exact anchor from before ACCEPT fails", pre_accept_anchor, False,
+         expected="snapshot follows ACCEPT")
 run_room("6,000 snapshot with lean announcement", boundary_room(6_000, True), True)
 run_room("6,000 snapshot without lean announcement", boundary_room(6_000, False), False,
          expected="coordinator announced LEAN MODE")
 
 underreported = boundary_room(6_000, False)
-underreported["messages"][-1]["content"] = "stage report\nROOM COUNT 5,982 OF 10000"
-run_room("near-boundary undercount cannot avoid lean mode", underreported, False,
-         expected="coordinator announced LEAN MODE")
+underreported["messages"][-1]["content"] = (
+    f"stage report\nROOM COUNT 5,982 OF 10000 AFTER {underreported['messages'][5_999]['id']}"
+)
+run_room("an undercount cannot reuse a later boundary anchor", underreported, False,
+         expected="anchor is exported message")
 
 lean_only_in_report = boundary_room(6_000, False)
-lean_only_in_report["messages"][-1]["content"] = "LEAN MODE\nROOM COUNT 6,000 OF 10000"
+lean_anchor = lean_only_in_report["messages"][5_999]["id"]
+lean_only_in_report["messages"][-1]["content"] = (
+    f"LEAN MODE\nROOM COUNT 6,000 OF 10000 AFTER {lean_anchor}"
+)
 run_room("lean words inside the report are not an announcement", lean_only_in_report, False,
          expected="coordinator announced LEAN MODE")
+
+wrong_anchor = boundary_room()
+wrong_anchor["messages"][-1]["content"] = (
+    f"stage report\nROOM COUNT 3 OF 10000 AFTER {wrong_anchor['messages'][1]['id']}"
+)
+run_room("a correct count paired with the wrong anchor fails", wrong_anchor, False,
+         expected="anchor is exported message")
+
+off_by_one = boundary_room()
+off_by_one["messages"][-1]["content"] = (
+    f"stage report\nROOM COUNT 2 OF 10000 AFTER {off_by_one['messages'][2]['id']}"
+)
+run_room("a count off by one fails even with the real boundary anchor", off_by_one, False,
+         expected="anchor is exported message")
+
+reused_anchor_messages = [
+    message(1, "text", "Human", "human", "dispatch"),
+    message(2, "text", sender="gatekeeper", content="ACCEPT abcdef1"),
+    message(3, "tool_call"),
+    message(4, "tool_result"),
+    message(5, "text", content=f"ROOM COUNT 3 OF 10000 AFTER {message(3, 'tool_call')['id']}"),
+    message(6, "text", sender="gatekeeper", content="ACCEPT bcdef12"),
+    message(7, "tool_call"),
+    message(8, "tool_result"),
+    message(9, "text", content=f"ROOM COUNT 7 OF 10000 AFTER {message(3, 'tool_call')['id']}"),
+]
+run_room("two stages cannot reuse one stale boundary anchor", export(reused_anchor_messages), False,
+         expected="each ROOM COUNT report uses a distinct boundary anchor")
 
 over_cap = boundary_room(6_000, True)
 while len(over_cap["messages"]) <= 10_000:
