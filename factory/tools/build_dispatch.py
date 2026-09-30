@@ -11,6 +11,11 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 KICKOFF = "/home/ubuntu/work/dark-factory-wearedevs"
 RESULT = "/home/ubuntu/work/band-work/current"
+EXPECTED = {
+    "template.md": {"{BAND}": 1, "{VERIFIERS}": 1, "{SEATS}": 1, "{KICKOFF}": 4, "{TRACK}": 3,
+                    "{RESULT}": 5, "{CHECKS}": 1, "{DESIGN}": 2},
+    "baseline-template.md": {"{KICKOFF}": 4, "{TRACK}": 3, "{RESULT}": 3, "{CHECKS}": 1},
+}
 
 
 def main():
@@ -38,6 +43,13 @@ def main():
     unknown = sorted(set(re.findall(r"\{[^{}\s]*\}", text)) - set(fill))
     if unknown:
         sys.exit(f"unknown placeholders in the template: {unknown}")
+    # Exact counts per template: a placeholder that lost its braces would otherwise pass as text.
+    want = dict(EXPECTED.get(template) or sys.exit(f"no placeholder counts recorded for {template}"))
+    want["{DESIGN}"] = want.get("{DESIGN}", 0) if design else 0
+    got = {k: text.count(k) for k in fill}
+    bad = {k: (got[k], want.get(k, 0)) for k in fill if got[k] != want.get(k, 0)}
+    if bad:
+        sys.exit(f"placeholder counts (found, expected) differ in {template}: {bad}")
     for key, value in fill.items():
         text = text.replace(key, value)
     if re.search(r"[{}]", text):
