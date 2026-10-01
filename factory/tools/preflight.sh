@@ -75,8 +75,12 @@ for v in ANTHROPIC_API_KEY OPENAI_API_KEY; do
 done
 
 # Inputs
-[ -f "$DISPATCH" ] && pass "dispatch file present ($(sha256sum "$DISPATCH" | cut -c1-12))" || fail "dispatch file missing"
-[ -f /home/ubuntu/work/design-kit/BRIEF.md ] && pass "design kit present" || fail "design kit missing"
+chk "complete design kit matches the synced sha256 manifest" \
+  sh "$FACTORY/tools/check_design_kit.sh" /home/ubuntu/work/design-kit \
+    /home/ubuntu/work/design-kit.sha256
+chk "all runnable dispatches match their generators" python3 "$FACTORY/tools/check_dispatch.py"
+[ -f "$DISPATCH" ] && pass "dispatch file sha256 $(sha256sum "$DISPATCH" | cut -c1-64)" \
+  || fail "dispatch file missing"
 
 # Headroom: a full run used about 35% of the Codex week.
 cx=$(python3 - <<'EOF'
