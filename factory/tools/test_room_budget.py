@@ -575,6 +575,50 @@ def run_floor_verdict_checks():
         print(totals)
 
 
+def run_floor_dispatch_time_check():
+    room = export([
+        message(1, "task", sender="coordinator"),
+        message(2, "text", "Human", "human", "dispatch"),
+        message(3, "text", sender="builder", content="work complete"),
+    ])
+    room["messages"][0]["insertedAt"] = "2026-01-01T00:00:00.000Z"
+    room["messages"][1]["insertedAt"] = "2026-01-01T00:00:10.000Z"
+    room["messages"][2]["insertedAt"] = "2026-01-01T00:00:15.000Z"
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        room_path = tmp / "room.json"
+        log_path = tmp / "commits.log"
+        floor_path = tmp / "floor.json"
+        room_path.write_text(json.dumps(room))
+        log_path.write_text(
+            f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\n"
+            "mandates/builder.md\n"
+            f"{'b' * 40}\x1fbuilder\x1f2026-01-01T00:00:12+00:00\x1fbuild\n"
+            "stage-1/app.py\n"
+        )
+        result = subprocess.run(
+            [sys.executable, str(FLOOR_DATA), str(room_path), str(log_path), str(floor_path)],
+            capture_output=True,
+            text=True,
+        )
+        floor = json.loads(floor_path.read_text()) if floor_path.exists() else {}
+    event_times = [event["t"] for event in floor.get("events", [])]
+    good = (
+        result.returncode == 0
+        and floor.get("duration_s") == 5.0
+        and event_times == [0.0, 5.0]
+        and floor.get("stage_first_commit_s") == {"1": 2.0}
+    )
+    if good:
+        print("ok   floor duration starts at the human dispatch")
+    else:
+        failures.append("floor duration dispatch boundary")
+        print("BAD  floor duration includes pre-dispatch room events")
+        print(result.stdout)
+        print(result.stderr)
+        print(floor)
+
+
 def run_declared_seat_check():
     room = export([
         message(1, "text", "Human", "human", "dispatch"),
@@ -732,6 +776,7 @@ run_room("development export may predate budget reports", export([
 
 run_factory_md_checks()
 run_floor_verdict_checks()
+run_floor_dispatch_time_check()
 run_declared_seat_check()
 run_judge_guide_checks()
 print(f"failures: {len(failures)}")

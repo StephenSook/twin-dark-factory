@@ -123,7 +123,9 @@ def main():
         at = first_text["insertedAt"] if first_text else "none"
         sys.exit(f"TRUNCATED EXPORT: the first text message ({at}) is from an agent, not the human "
                  "dispatch. Scroll the room to its first message in the console, then download again.")
-    t0 = ts(msgs[0]["insertedAt"])
+    # Room creation and join events can precede the run by minutes. Every elapsed-time claim is
+    # measured from the human dispatch, which is the factory's actual start boundary.
+    t0 = ts(first_text["insertedAt"])
     seats = {i: n for i, n in names.items() if kinds.get(i) == "Agent"}
     humans = {i: n for i, n in names.items() if kinds.get(i) != "Agent"}
 
