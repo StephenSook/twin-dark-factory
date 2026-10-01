@@ -47,10 +47,13 @@ else
   fail "harness check (see $WORK/check.log)"; tail -20 "$WORK/check.log"
 fi
 
-# 4. The organizers' isolated run of every folder.
+# 4. The organizers' isolated run of every folder. The process status and the summary are
+# independent evidence. A stale or partial summary must never hide a failed harness process.
+isolated_status=0
 (cd "$KICKOFF" && "$PY" -m harness run --track "$TRACK" --repo "$R" --all --mode isolated \
-  --out "$WORK/run") > "$WORK/run.log" 2>&1
-"$PY" - "$WORK/run/summary.json" "$STAGES" <<'EOF'
+  --out "$WORK/run") > "$WORK/run.log" 2>&1 || isolated_status=$?
+summary_status=0
+"$PY" - "$WORK/run/summary.json" "$STAGES" <<'EOF' || summary_status=$?
 import json, sys
 try:
     s = json.load(open(sys.argv[1]))
@@ -66,7 +69,11 @@ for n in range(1, want + 1):
 print(f"INFO  isolated run folders reported: {len(folders)} of {want}")
 sys.exit(0 if ok and len(folders) >= want else 1)
 EOF
-[ $? = 0 ] || fails=$((fails + 1))
+if [ "$isolated_status" -ne 0 ]; then
+  fail "isolated harness process exited $isolated_status (see $WORK/run.log)"
+  tail -20 "$WORK/run.log"
+fi
+[ "$summary_status" -eq 0 ] || fails=$((fails + 1))
 
 # 5. The room export.
 if [ -f "$R/room.json" ]; then

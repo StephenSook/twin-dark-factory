@@ -45,6 +45,8 @@ jobs:
         run: sh factory/tools/test_pre_commit.sh
       - name: Holdout seal verifies, rejects tampering and refuses an empty folder
         run: sh factory/tools/test_seal_holdout.sh
+      - name: Result verifier refuses a failed isolated harness process
+        run: sh factory/tools/test_verify_result.sh
 
   secrets:
     name: No secrets in full history
