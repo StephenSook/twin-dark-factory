@@ -1,6 +1,6 @@
 """Check that room.json is a complete, unedited BAND export of an unattended run.
 
-  python check_room.py room.json [--allow-human-after-dispatch]
+  python check_room.py room.json [--expected-accepts N] [--allow-human-after-dispatch]
 
 Checks, each printed as PASS or FAIL, exit 1 on any failure:
   - the export has BAND's own top-level keys and per-message fields (a hand-written log does not);
@@ -13,6 +13,7 @@ Checks, each printed as PASS or FAIL, exit 1 on any failure:
   - prints the file's sha256 and message counts for FACTORY.md.
 """
 import collections
+import argparse
 import hashlib
 import json
 import pathlib
@@ -33,8 +34,16 @@ ACCEPT = re.compile(r"\bACCEPT\s+([0-9a-f]{7,40})\b")
 
 
 def main():
-    path = pathlib.Path(sys.argv[1])
-    allow_human = "--allow-human-after-dispatch" in sys.argv[2:]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("room_json")
+    parser.add_argument("--expected-accepts", type=int, default=4)
+    parser.add_argument("--allow-human-after-dispatch", action="store_true")
+    parser.add_argument("--allow-incomplete-run", action="store_true")
+    args = parser.parse_args()
+    if args.expected_accepts < 1:
+        parser.error("--expected-accepts must be at least 1")
+    path = pathlib.Path(args.room_json)
+    allow_human = args.allow_human_after_dispatch
     raw_bytes = path.read_bytes()
     raw = json.loads(raw_bytes)
     msgs = raw.get("messages") or []
@@ -75,8 +84,9 @@ def main():
     # A judged run proves that the coordinator watched the room budget at every accepted stage.
     # Development exports made before this rule can opt out with the same explicit flag that
     # permits their human nudges.
-    if allow_human:
-        print("NOTE  room-budget reports are not required for a development run")
+    if allow_human or args.allow_incomplete_run:
+        why = "development run" if allow_human else "explicitly incomplete run"
+        print(f"NOTE  completion and room-budget reports are not required for this {why}")
     else:
         accepted = []
         seen_revs = set()
@@ -102,6 +112,9 @@ def main():
                 reports.append((pos, int(count.replace(",", "")), anchor))
 
         anchors = [anchor for _pos, _count, anchor in reports]
+        check(len(accepted) == args.expected_accepts,
+              f"gatekeeper posted {args.expected_accepts} unique ACCEPT revisions "
+              f"({len(accepted)} found)")
         check(len(set(anchors)) == len(anchors),
               "each ROOM COUNT report uses a distinct boundary anchor")
 
@@ -133,6 +146,17 @@ def main():
                 check(lean, f"coordinator announced LEAN MODE before boundary report "
                       f"anchored at {count:,}")
 
+        final_reports = [
+            m for m in texts
+            if m.get("senderType") == "Agent"
+            and (m.get("senderName") or "").split("/")[-1] == "coordinator"
+            and re.match(r"^\s*FINAL REPORT\b", m.get("content") or "")
+        ]
+        check(len(final_reports) == 1,
+              f"coordinator posted exactly one FINAL REPORT ({len(final_reports)} found)")
+        check(bool(final_reports) and texts[-1].get("id") == final_reports[-1].get("id"),
+              "coordinator FINAL REPORT is the last text message")
+
     kinds = collections.Counter(m.get("messageType") for m in msgs)
     print(f"INFO  sha256 {hashlib.sha256(raw_bytes).hexdigest()}")
     print(f"INFO  messages {len(msgs)}, by type {dict(sorted(kinds.items()))}")
@@ -144,8 +168,7 @@ def main():
     if texts:
         last = texts[-1]
         print(f"INFO  last text message from {last.get('senderName') or last.get('senderId')} at "
-              f"{last.get('insertedAt')}: confirm it is the final report (an export cut off at the end "
-              "starts correctly but stops early)")
+              f"{last.get('insertedAt')}")
     sys.exit(1 if failures else 0)
 
 

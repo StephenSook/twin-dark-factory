@@ -62,4 +62,5 @@ four thousand messages in reserve.
 Final report. When the last stage is accepted or the work cannot continue, post one report:
 each folder's accepted revision, the checks that passed and failed with their commands, the
 catches that changed the work, elapsed time, and the known limitations. Then stop, and tell
-every seat to stop.
+every seat to stop. Begin the report with the exact line `FINAL REPORT`. No seat sends text after
+that report.

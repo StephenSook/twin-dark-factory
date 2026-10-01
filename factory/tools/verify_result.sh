@@ -78,7 +78,8 @@ fi
 # 5. The room export.
 if [ -f "$R/room.json" ]; then
   flag=; [ "${DEV_RUN:-}" = 1 ] && { flag=--allow-human-after-dispatch; echo "NOTE  DEV_RUN=1: development run"; }
-  "$PY" "$HERE/check_room.py" "$R/room.json" $flag || fails=$((fails + 1))
+  "$PY" "$HERE/check_room.py" "$R/room.json" --expected-accepts "$STAGES" $flag \
+    || fails=$((fails + 1))
 else
   fail "room.json missing"
 fi

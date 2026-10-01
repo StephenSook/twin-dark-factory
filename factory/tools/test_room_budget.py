@@ -57,11 +57,25 @@ def boundary_room(snapshot=3, announce_lean=False):
     return export(messages)
 
 
-def run_room(label, room, want, allow_development=False, expected=None):
+def run_room(label, room, want, allow_development=False, expected=None,
+             expected_accepts=1, add_final=True):
+    if not allow_development and add_final:
+        room["messages"].append(message(
+            0x7FFFFFFF,
+            "text",
+            sender="coordinator",
+            content="FINAL REPORT\nrun complete",
+        ))
     with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp) / "room.json"
         path.write_text(json.dumps(room))
-        command = [sys.executable, str(CHECK_ROOM), str(path)]
+        command = [
+            sys.executable,
+            str(CHECK_ROOM),
+            str(path),
+            "--expected-accepts",
+            str(expected_accepts),
+        ]
         if allow_development:
             command.append("--allow-human-after-dispatch")
         result = subprocess.run(command, capture_output=True, text=True)
@@ -757,7 +771,7 @@ reused_anchor_messages = [
     message(9, "text", content=f"ROOM COUNT 7 OF 10000 AFTER {message(3, 'tool_call')['id']}"),
 ]
 run_room("two stages cannot reuse one stale boundary anchor", export(reused_anchor_messages), False,
-         expected="each ROOM COUNT report uses a distinct boundary anchor")
+         expected="each ROOM COUNT report uses a distinct boundary anchor", expected_accepts=2)
 
 over_cap = boundary_room(6_000, True)
 while len(over_cap["messages"]) <= 10_000:
@@ -773,6 +787,21 @@ run_room("development export may predate budget reports", export([
     message(1, "text", "Human", "human", "dispatch"),
     message(2, "text", sender="gatekeeper", content="ACCEPT abcdef1"),
 ]), True, allow_development=True)
+
+run_room("a judged export with zero acceptances fails closed", export([
+    message(1, "text", "Human", "human", "dispatch"),
+]), False, expected="unique ACCEPT revisions", expected_accepts=4)
+
+run_room("a judged export without a final report fails closed", boundary_room(), False,
+         expected="exactly one FINAL REPORT", add_final=False)
+
+text_after_final = boundary_room()
+text_after_final["messages"].extend([
+    message(100_001, "text", sender="coordinator", content="FINAL REPORT\nrun complete"),
+    message(100_002, "text", sender="builder", content="late reply"),
+])
+run_room("text after the final report fails closed", text_after_final, False,
+         expected="FINAL REPORT is the last text message", add_final=False)
 
 run_factory_md_checks()
 run_floor_verdict_checks()
