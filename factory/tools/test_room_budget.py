@@ -403,6 +403,16 @@ def run_judge_guide_checks():
         ("builder-cx", 1.0, 10, {"gpt-6-astra"}),
         ("gatekeeper", 1.0, 10, {"gpt-6-astra"}),
     ])
+    original_art_dir = deck.ART["dir"]
+    with tempfile.TemporaryDirectory() as app_tmp:
+        app_dir = pathlib.Path(app_tmp)
+        (app_dir / "app-live.png").write_bytes(b"screenshot")
+        deck.ART["dir"] = app_dir
+        app_slide = deck.optional_app_slide({
+            "app_headline": "The accepted final stage runs in a browser.",
+            "app_caption": "Captured from the deployed judged service.",
+        })
+    deck.ART["dir"] = original_art_dir
     fixed_report = report.first_catch(floor)
     no_fix_report = report.first_catch(no_fix_floor)
     if (
@@ -432,6 +442,9 @@ def run_judge_guide_checks():
         and "<b>builder-cx</b><span>Codex</span>" in temporary_grid
         and "<b>builder</b>" not in temporary_grid
         and "<b>auditor</b><span>not in BAND usage</span>" in temporary_grid
+        and "The accepted final stage runs in a browser." in app_slide
+        and "Captured from the deployed judged service." in app_slide
+        and 'src="art/app-live.png"' in app_slide
         and "fix burst" in fixed_report
         and "unrelated stage work" not in fixed_report
         and "fixed it" not in no_fix_report

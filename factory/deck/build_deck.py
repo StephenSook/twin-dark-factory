@@ -127,6 +127,17 @@ def art(name, cls):
     return ""
 
 
+def optional_app_slide(facts):
+    screenshot = art("app-live", "appshot")
+    if not screenshot:
+        return ""
+    headline = facts.get("app_headline")
+    caption = facts.get("app_caption")
+    if not headline or not caption:
+        raise SystemExit("app-live artwork requires app_headline and app_caption facts")
+    return slide(headline, screenshot + f'<p class="note appcaption">{esc(caption)}</p>')
+
+
 def flow_svg(width=1640, height=600):
     def box(x, y, w, h, fill, title, sub):
         return (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="26" fill="{fill}" stroke="{INK}" stroke-width="4"/>'
@@ -267,11 +278,24 @@ def build(floor, sessions_path, facts, draft):
         f"Each folder claims its own stage in the organizers' isolated run.",
         '<div class="bignums">' + "".join(f'<div><b>{esc(s)}</b><span>stage {i + 1}: {esc(v)}</span></div>'
                                           for i, (s, v) in enumerate(stages.items())) + "</div>"))
+    app_slide = optional_app_slide(facts)
+    if app_slide:
+        slides.append(app_slide)
     slides.append(slide(
         facts["holdout_headline"],
         f'<div class="bignums"><div><b>{esc(facts["holdout_score"])}</b><span>hidden attacks passed</span></div>'
         f'<div><b class="mono">{esc(facts["holdout_digest"][:12])}</b><span>digest committed before dispatch</span></div></div>'
         + art("sealed-envelope", "corner")))
+    if facts.get("genericity"):
+        slides.append(slide(
+            "The same frozen factory was tested on a second track.",
+            f'<div class="evidencecopy">{esc(facts["genericity"])}</div>',
+            kicker="Genericity"))
+    if facts.get("baseline"):
+        slides.append(slide(
+            "The factory is compared with one agent working alone.",
+            f'<div class="evidencecopy">{esc(facts["baseline"])}</div>',
+            kicker="Single-agent baseline"))
     slides.append(slide(
         usage_claim(total_tok, total_cost),
         hbars([(s, c) for s, c, _, _ in costs], unit="", fmt=lambda v: f"${v:,.2f}",
@@ -318,6 +342,9 @@ svg .dot {{ font: 800 26px Figtree, sans-serif; fill: #fff; }}
 code {{ font-family: 'JetBrains Mono', monospace; background: #fff; border: 2px solid {INK}; border-radius: 10px; padding: 4px 12px; font-size: 26px; }}
 img.hero {{ position: absolute; right: 120px; bottom: 30px; width: 400px; }}
 img.corner {{ position: absolute; right: 150px; bottom: 90px; width: 440px; }}
+img.appshot {{ display: block; max-width: 1500px; max-height: 670px; margin: 0 auto; border: 4px solid {INK}; border-radius: 28px; box-shadow: 16px 18px 0 {BUTTER}; }}
+.appcaption {{ margin: 34px auto 0; text-align: center; }}
+.evidencecopy {{ background: #fff; border: 4px solid {INK}; border-radius: 28px; padding: 56px; font-size: 44px; line-height: 1.4; max-width: 1500px; }}
 img.icon {{ display: block; width: 150px; height: 150px; object-fit: contain; margin: 0 auto 14px; }}
 svg .bt {{ font: 800 36px 'Bricolage Grotesque', sans-serif; fill: {INK}; }}
 svg .bs {{ font: 600 26px Figtree, sans-serif; fill: #3a3550; }}
