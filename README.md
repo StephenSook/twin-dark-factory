@@ -33,12 +33,14 @@ dispatch, and the visual brief.
 | `factory/tools/seal_holdout.py` | Commit-then-reveal for a holdout check suite the band never sees: seal a digest before a run, publish the files after, anyone verifies |
 | `factory/dispatch/` | The task sent to the coordinator: the only human input to a run |
 | `factory/design-kit/` | Visual brief and six illustrations supplied by the product owner |
+| `factory/deck/` | Evidence-fed deck builder and renderer. Rendering fails on overflow, missing slides, stale images, empty files or PDF page drift. |
 
 ## Checks
 
 ```sh
 python factory/tools/build_mandates.py && git diff --exit-code -- factory/mandates
 python factory/tools/lint_mandates.py <path-to-dark-factory-wearedevs> factory/mandates
+python factory/tools/test_deck_renderer.py
 sh factory/tools/test_pre_commit.sh
 ```
 
