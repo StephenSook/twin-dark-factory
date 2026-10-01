@@ -28,6 +28,13 @@ listed=$(jam list 2>/dev/null)
 for s in $SEATS; do
   echo "$listed" | grep -q "/$s \[$s\] Connected" && pass "seat $s connected" || fail "seat $s not connected"
 done
+if participant_output=$(band room participants "$ROOM_ID" 2>/dev/null) \
+  && printf '%s\n' "$participant_output" \
+    | python3 "$FACTORY/tools/check_room_participants.py" "$FACTORY/seats.json" >/dev/null; then
+  pass "room contains exactly the configured seats"
+else
+  fail "room does not contain exactly the configured seats"
+fi
 
 # Mandates: the files the seats read are the committed ones, and generic.
 for s in $SEATS; do
