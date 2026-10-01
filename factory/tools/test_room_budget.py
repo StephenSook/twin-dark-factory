@@ -60,7 +60,7 @@ def boundary_room(snapshot=3, announce_lean=False):
 
 
 def run_room(label, room, want, allow_development=False, expected=None,
-             expected_accepts=1, add_final=True):
+             expected_accepts=1, add_final=True, expected_seats=None):
     if not allow_development and add_final:
         room["messages"].append(message(
             0x7FFFFFFF,
@@ -71,6 +71,11 @@ def run_room(label, room, want, allow_development=False, expected=None,
     with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp) / "room.json"
         path.write_text(json.dumps(room))
+        if expected_seats is not None:
+            mandates = pathlib.Path(tmp) / "mandates"
+            mandates.mkdir()
+            for seat in expected_seats:
+                (mandates / f"{seat}.md").write_text(f"# {seat}\n")
         command = [
             sys.executable,
             str(CHECK_ROOM),
@@ -829,6 +834,21 @@ run_room("development export may predate budget reports", export([
     message(1, "text", "Human", "human", "dispatch"),
     message(2, "text", sender="gatekeeper", content="ACCEPT abcdef1"),
 ]), True, allow_development=True)
+
+all_seats = ["coordinator", "modeler", "builder", "surface", "gatekeeper", "auditor"]
+full_roster = boundary_room()
+for number, seat in enumerate(("modeler", "builder", "surface", "auditor"), start=20_000):
+    full_roster["messages"].append(message(number, "thought", sender=seat))
+run_room("all committed seats produced room activity", full_roster, True,
+         expected_seats=all_seats)
+
+missing_auditor = json.loads(json.dumps(full_roster))
+missing_auditor["messages"] = [
+    item for item in missing_auditor["messages"]
+    if (item.get("senderName") or "").split("/")[-1] != "auditor"
+]
+run_room("a committed seat without activity fails", missing_auditor, False,
+         expected="room activity matches all committed seats", expected_seats=all_seats)
 
 run_room("a judged export with zero acceptances fails closed", export([
     message(1, "text", "Human", "human", "dispatch"),

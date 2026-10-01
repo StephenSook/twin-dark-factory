@@ -8,6 +8,7 @@ Checks, each printed as PASS or FAIL, exit 1 on any failure:
   - messages are in time order with no duplicates;
   - the first text message is the human's dispatch (a truncated export starts mid-run);
   - no human text message follows the dispatch (the run was hands off);
+  - every committed seat appears as an active agent when mandates/ is beside room.json;
   - the room stays within the hard cap and every accepted stage has an exact anchored count report;
   - a count at or above the lean threshold is preceded by the coordinator's lean announcement;
   - prints the file's sha256 and message counts for FACTORY.md.
@@ -80,6 +81,22 @@ def main():
         print("NOTE  " + label + " (allowed for a development run)")
     else:
         check(not humans_after, label)
+
+    mandates = path.parent / "mandates"
+    expected_seats = {item.stem for item in mandates.glob("*.md")} if mandates.is_dir() else set()
+    if expected_seats:
+        active_seats = {
+            (m.get("senderName") or "").split("/")[-1]
+            for m in msgs
+            if m.get("senderType") == "Agent" and m.get("senderName")
+        }
+        missing_seats = sorted(expected_seats - active_seats)
+        unexpected_seats = sorted(active_seats - expected_seats)
+        check(not missing_seats and not unexpected_seats,
+              f"room activity matches all committed seats "
+              f"(missing {missing_seats}, unexpected {unexpected_seats})")
+    else:
+        print("NOTE  no mandates directory beside room.json; seat activity was not checked")
 
     # A judged run proves that the coordinator watched the room budget at every accepted stage.
     # Development exports made before this rule can opt out with the same explicit flag that
