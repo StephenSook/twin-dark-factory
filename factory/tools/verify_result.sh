@@ -84,7 +84,17 @@ else
   fail "room.json missing"
 fi
 
-# 6. No secrets anywhere in history.
+# 6. Central public claims point to distinct, verbatim room evidence.
+if [ -f "$R/evidence/claim-evidence.json" ] && [ -f "$HERE/check_claim_evidence.py" ]; then
+  "$PY" "$HERE/check_claim_evidence.py" "$R/room.json" "$R/evidence/claim-evidence.json" \
+    || fails=$((fails + 1))
+elif [ "${DEV_RUN:-}" = 1 ]; then
+  echo "NOTE  development run has no public-claim evidence manifest"
+else
+  fail "evidence/claim-evidence.json or tools/check_claim_evidence.py missing"
+fi
+
+# 7. No secrets anywhere in history.
 if command -v gitleaks >/dev/null; then
   gitleaks git "$R" --no-banner --redact > "$WORK/leaks.log" 2>&1 \
     && pass "gitleaks: full history clean" || { fail "gitleaks found leaks (see $WORK/leaks.log)"; tail -5 "$WORK/leaks.log"; }

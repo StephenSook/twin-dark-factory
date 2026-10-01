@@ -41,6 +41,8 @@ jobs:
         run: sh factory/tools/test_design_kit.sh
       - name: Seat runtimes cannot stay bound to an old room or repository
         run: python factory/tools/test_seat_runtime.py
+      - name: Public claims cite distinct verbatim room evidence
+        run: python factory/tools/test_claim_evidence.py
 
   guard:
     name: Commit guard and holdout seal

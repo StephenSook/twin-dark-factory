@@ -1,5 +1,5 @@
 # Copied by the human to .github/workflows/verify.yml in the result repository, with
-# tools/verify_result.sh and tools/check_room.py beside it. It verifies the submission the way
+# tools/verify_result.sh, tools/check_room.py and tools/check_claim_evidence.py beside it. It verifies the submission the way
 # a judge would: fresh clone, the organizers' checker at the pinned kickoff commit, isolated mode.
 name: verify
 on:
