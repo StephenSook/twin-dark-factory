@@ -144,6 +144,7 @@ def in_flight_snapshot_check():
             "process_start_token": ROOM_METER.process_start_token(os.getpid()),
             "room_id": ROOM,
             "started_at_epoch": now - 1,
+            "expires_at_epoch": now + 60,
         })
 
         def write_state(anchor, snapshot_started, observed):
@@ -153,6 +154,7 @@ def in_flight_snapshot_check():
                 "room_id": ROOM,
                 "snapshot_started_at_epoch": snapshot_started,
                 "observed_at_epoch": observed,
+                "expires_at_epoch": now + 60,
                 "count": 2,
                 "anchor_id": anchor,
             })
@@ -276,6 +278,25 @@ def integration_checks():
             text=True,
         )
         check("status confirms the expected room", status.returncode == 0 and f"room={ROOM}" in status.stdout)
+        short_status = subprocess.run(
+            [
+                sys.executable,
+                str(TOOL),
+                "status",
+                "--repo",
+                str(repo),
+                "--room",
+                ROOM,
+                "--min-remaining-seconds",
+                "30",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        check(
+            "status refuses an observer without enough remaining lifetime",
+            short_status.returncode != 0 and "remaining lifetime" in short_status.stderr,
+        )
         wrong_status = subprocess.run(
             [
                 sys.executable,
@@ -326,5 +347,6 @@ def integration_checks():
 
 
 integration_checks()
+check("default observer lifetime is twelve hours", ROOM_METER.DEFAULT_MAX_SECONDS == 43_200.0)
 print(f"failures: {len(failures)}")
 sys.exit(1 if failures else 0)

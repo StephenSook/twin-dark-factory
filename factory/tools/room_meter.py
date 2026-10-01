@@ -20,7 +20,7 @@ import uuid
 ROOM_LIMIT = 10_000
 DEFAULT_INTERVAL = 15.0
 DEFAULT_MAX_AGE = 45.0
-DEFAULT_MAX_SECONDS = 21_600.0
+DEFAULT_MAX_SECONDS = 43_200.0
 DEFAULT_STARTUP_TIMEOUT = 150.0
 
 
@@ -228,12 +228,15 @@ def read_fresh_state(repo, max_age, expected_room=None):
         observed = float(state["observed_at_epoch"])
         age = time.time() - snapshot_started
         count = int(state["count"])
+        expires_at = float(state["expires_at_epoch"])
     except (KeyError, TypeError, ValueError) as exc:
         raise MeterError("room meter state is incomplete") from exc
     if observed < snapshot_started or observed - snapshot_started > max_age:
         raise MeterError("room meter snapshot duration is inconsistent")
     if age < -5 or age > max_age:
         raise MeterError(f"room meter state is stale ({age:.1f} seconds old)")
+    if expires_at <= time.time():
+        raise MeterError("room meter lifetime has expired")
     if count <= 0 or count > ROOM_LIMIT:
         raise MeterError("room meter count is outside the supported range")
     validate_uuid(state.get("anchor_id"), "room meter anchor")
@@ -300,12 +303,16 @@ def serve(args):
     paths = runtime_paths(args.repo)
     paths["runtime"].mkdir(parents=True, exist_ok=True)
     os.chmod(paths["runtime"], 0o700)
+    started_at = time.time()
+    expires_at = started_at + args.max_seconds
     meta = {
         "instance_id": args.instance_id,
         "pid": os.getpid(),
         "process_start_token": process_start_token(os.getpid()),
         "room_id": args.room,
-        "started_at_epoch": time.time(),
+        "started_at_epoch": started_at,
+        "expires_at_epoch": expires_at,
+        "max_seconds": args.max_seconds,
     }
     atomic_json(paths["meta"], meta)
     fetch = band_fetcher(args.room, args.band_bin, args.query_timeout)
@@ -320,6 +327,7 @@ def serve(args):
                 "schema_version": 1,
                 "instance_id": args.instance_id,
                 "room_id": args.room,
+                "expires_at_epoch": expires_at,
                 "observed_at_epoch": now,
                 "observed_at": dt.datetime.fromtimestamp(now, dt.timezone.utc).isoformat(),
             })
@@ -455,6 +463,8 @@ def build_parser():
         read_parser.add_argument("--room")
         if name == "read":
             read_parser.add_argument("--wait-timeout", type=float, default=DEFAULT_MAX_AGE)
+        else:
+            read_parser.add_argument("--min-remaining-seconds", type=float, default=0.0)
 
     stop_parser = sub.add_parser("stop")
     stop_parser.add_argument("--repo", required=True)
@@ -483,9 +493,15 @@ def main():
                 )
             else:
                 state, age = read_fresh_state(args.repo, args.max_age, args.room)
+                remaining = float(state["expires_at_epoch"]) - time.time()
+                if remaining < args.min_remaining_seconds:
+                    raise MeterError(
+                        f"room meter remaining lifetime {remaining:.1f}s is below "
+                        f"required {args.min_remaining_seconds:.1f}s"
+                    )
                 print(
                     f"ROOM METER READY room={state['room_id']} count={state['count']} "
-                    f"age={age:.1f}s pid state matches"
+                    f"age={age:.1f}s remaining={remaining:.1f}s pid state matches"
                 )
     except MeterError as exc:
         print(f"ROOM METER ERROR: {exc}", file=sys.stderr)

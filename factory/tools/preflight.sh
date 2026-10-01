@@ -56,7 +56,8 @@ cmp -s "$FACTORY/tools/pre-commit" "$REPO/.git/hooks/pre-commit" && [ -x "$REPO/
 [ "$(readlink -f /home/ubuntu/work/band-work/current)" = "$(readlink -f "$REPO")" ] \
   && pass "seat working directory points at the result repo" || fail "current -> $(readlink -f /home/ubuntu/work/band-work/current)"
 chk "external room meter is attached to room $ROOM_ID" \
-  python3 "$FACTORY/tools/room_meter.py" status --repo "$REPO" --room "$ROOM_ID"
+  python3 "$FACTORY/tools/room_meter.py" status --repo "$REPO" --room "$ROOM_ID" \
+    --min-remaining-seconds 39600
 chk "external room meter publishes a fresh anchored count" "$REPO/.git/factory/count"
 
 # Seat accounts and billing
