@@ -36,10 +36,16 @@ git add stage-1/inner 2>/dev/null
 # shellcheck disable=SC2086
 expect refuse "nested repository" $seat
 git rm -q -f --cached stage-1/inner
+git add stage-1/inner 2>/dev/null
+expect refuse "human nested repository" -c user.name="Stephen Sookra" -c user.email=owner@example.com
+git rm -q -f --cached stage-1/inner
 
 mkdir -p stage-1/__pycache__ && echo b > stage-1/__pycache__/a.pyc && git add -f stage-1/__pycache__/a.pyc
 # shellcheck disable=SC2086
 expect refuse "bytecode cache" $seat
+git rm -q --cached stage-1/__pycache__/a.pyc
+git add -f stage-1/__pycache__/a.pyc
+expect refuse "human bytecode cache" -c user.name="Stephen Sookra" -c user.email=owner@example.com
 git rm -q --cached stage-1/__pycache__/a.pyc
 
 echo ok > stage-1/app.py && git add stage-1/app.py

@@ -9,6 +9,17 @@ if [ -z "$name" ]; then
   echo "commit refused: no author. Commit with: git -c user.name=<your seat> -c user.email=<your seat>@band.local commit ..." >&2
   exit 1
 fi
+
+# 3. No nested repositories (gitlinks) and no bytecode caches in any commit, including human
+# packaging commits. Author metadata controls path ownership, not repository hygiene.
+nested=$(git diff --cached --diff-filter=AM --raw | awk '$2 == "160000" {print $6}')
+junk=$(git diff --cached --diff-filter=AM --name-only | grep -E '(^|/)(__pycache__/|\.pytest_cache/)|\.pyc$' || true)
+if [ -n "$nested$junk" ]; then
+  echo "commit refused: nested repository or cache files staged. Keep scratch copies under the system temp directory:" >&2
+  echo "$nested" "$junk" >&2
+  exit 1
+fi
+
 [ "$name" = "$HUMAN" ] && exit 0
 
 # The seats are the mandates the human committed, read from the committed tree (an uncommitted
@@ -33,12 +44,4 @@ if [ -n "$outside" ]; then
   exit 1
 fi
 
-# 3. No nested repositories (gitlinks) and no bytecode caches in any commit.
-nested=$(git diff --cached --diff-filter=AM --raw | awk '$2 == "160000" {print $6}')
-junk=$(git diff --cached --diff-filter=AM --name-only | grep -E '(^|/)(__pycache__/|\.pytest_cache/)|\.pyc$' || true)
-if [ -n "$nested$junk" ]; then
-  echo "commit refused: nested repository or cache files staged. Keep scratch copies under the system temp directory:" >&2
-  echo "$nested" "$junk" >&2
-  exit 1
-fi
 exit 0
