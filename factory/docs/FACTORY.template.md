@@ -1,7 +1,7 @@
 # FACTORY.md: Twin, a BAND dark factory
 
 **The builder never grades its own work.** Six coding agents in one BAND room, on three model
-families, turned the written requirements into all four stage folders from a single dispatch.
+families, built and checked one stage folder at a time from a single dispatch.
 Every number on this page is generated from files in this repository by
 `tools/factory_md.py`; rerun it to check.
 

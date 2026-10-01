@@ -13,6 +13,8 @@ FLOOR_DATA = ROOT / "factory" / "tools" / "floor_data.py"
 FACTORY_MD = ROOT / "factory" / "tools" / "factory_md.py"
 JUDGE_GUIDE = ROOT / "factory" / "tools" / "judge_guide.py"
 DECK = ROOT / "factory" / "deck" / "build_deck.py"
+FACTORY_TEMPLATE = ROOT / "factory" / "docs" / "FACTORY.template.md"
+FLOOR_INDEX = ROOT / "factory" / "floor" / "index.html"
 failures = []
 
 
@@ -363,6 +365,22 @@ def run_judge_guide_checks():
     report_spec = importlib.util.spec_from_file_location("factory_md_test", FACTORY_MD)
     report = importlib.util.module_from_spec(report_spec)
     report_spec.loader.exec_module(report)
+    with tempfile.TemporaryDirectory() as cost_tmp:
+        cost_sessions = pathlib.Path(cost_tmp) / "sessions.json"
+        cost_sessions.write_text(json.dumps({"sessions": [{
+            "attribution": {"chatIds": ["room-test"], "peerName": "stephensookra/gatekeeper"},
+            "models": [{"model": "gpt-6-astra"}],
+            "inputTokens": 10,
+            "outputTokens": 5,
+            "totalCost": 0.25,
+        }]}))
+        honest_cost = report.costs(
+            cost_sessions,
+            "room-test",
+            {"featherless_note": "The inference key cannot read the provider billing meter."},
+            False,
+            False,
+        )
     fixed_slide = deck.caught_slide(floor)
     no_fix_slide = deck.caught_slide(no_fix_floor)
     surface_floor = json.loads(json.dumps(floor))
@@ -370,6 +388,7 @@ def run_judge_guide_checks():
     surface_slide = deck.caught_slide(surface_floor)
     fixed_claims = deck.rejection_claims(floor["totals"])
     no_fix_claims = deck.rejection_claims(no_fix_floor["totals"])
+    usage_claim = deck.usage_claim(1_500_000, 12.25)
     development_title = deck.title_claim(facts, floor["totals"])
     judged_totals = dict(floor["totals"])
     judged_totals["human_messages_after_dispatch"] = 0
@@ -394,6 +413,11 @@ def run_judge_guide_checks():
         and fixed_claims[2] == "Every rejection had a later same-stage writer commit."
         and no_fix_claims[0] == 0
         and no_fix_claims[2] == "0 of 1 rejections had a later same-stage writer commit."
+        and usage_claim == "BAND attributes 2M tokens and about $12 of list-price equivalent to the Claude and Codex seats."
+        and "whole run" not in usage_claim.lower()
+        and "outside Band's export" in honest_cost
+        and "cannot read the provider billing meter" in honest_cost
+        and "metered:" not in honest_cost
         and "3 human recovery messages" in development_title
         and "no later human input" not in development_title
         and "This development run" in zero_message_development
@@ -702,6 +726,24 @@ def run_declared_seat_check():
         print(floor)
 
 
+def run_static_public_claim_checks():
+    factory_template = FACTORY_TEMPLATE.read_text()
+    floor_index = FLOOR_INDEX.read_text()
+    good = (
+        "all four stage folders" not in factory_template
+        and "built and checked one stage folder at a time" in factory_template
+        and "Six agents. One verifiable run." in floor_index
+        and "Five agents" not in floor_index
+        and "python tools/floor_data.py room.json . floor.json" in floor_index
+        and "python factory/tools/floor_data.py room.json . floor.json" not in floor_index
+    )
+    if good:
+        print("ok   public fallback copy avoids unmeasured run claims")
+    else:
+        failures.append("public fallback copy")
+        print("BAD  public fallback copy contains an unmeasured or stale claim")
+
+
 run_room("boundary report below lean threshold", boundary_room(), True)
 duplicate_accept = boundary_room()
 duplicate_accept["messages"].insert(
@@ -808,5 +850,6 @@ run_floor_verdict_checks()
 run_floor_dispatch_time_check()
 run_declared_seat_check()
 run_judge_guide_checks()
+run_static_public_claim_checks()
 print(f"failures: {len(failures)}")
 sys.exit(1 if failures else 0)

@@ -157,10 +157,17 @@ def costs(sessions_path, room, facts, draft, development):
             sys.exit("cost_note is allowed only for a development run")
         out.append("\n" + facts["cost_note"])
     else:
-        fl = need(facts, "featherless_usd", draft)
+        fl = facts.get("featherless_usd")
+        fl_note = facts.get("featherless_note")
+        if fl not in (None, ""):
+            auditor = f"The auditor ran on Featherless credits, metered: **${fl}** for the whole run."
+        elif fl_note not in (None, ""):
+            auditor = f"The auditor ran on Featherless outside Band's export. {fl_note}"
+        else:
+            need(facts, "featherless_usd or featherless_note", draft)
+            auditor = "The auditor's Featherless usage is NOT MEASURED YET." if draft else ""
         out.append("\nThe Claude and Codex seats ran on flat-rate subscriptions; the dollars above are Band's "
-                   "own list-price estimate from its usage export, not a bill. The auditor ran on Featherless "
-                   f"credits, metered: **${fl}** for the whole run." if fl is not None else "")
+                   "own list-price estimate from its usage export, not a bill. " + auditor)
     return "\n".join(out)
 
 

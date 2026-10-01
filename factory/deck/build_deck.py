@@ -222,6 +222,13 @@ def title_claim(facts, totals):
     return f"{core} {autonomy}"
 
 
+def usage_claim(total_tok, total_cost):
+    return (
+        f"BAND attributes {total_tok / 1e6:,.0f}M tokens and about ${total_cost:,.0f} "
+        "of list-price equivalent to the Claude and Codex seats."
+    )
+
+
 def slide(headline, body, cls="", kicker=""):
     k = f'<div class="kicker">{esc(kicker)}</div>' if kicker else ""
     return f'<section class="slide {cls}">{k}<h1>{esc(headline)}</h1><div class="body">{body}</div></section>'
@@ -266,10 +273,10 @@ def build(floor, sessions_path, facts, draft):
         f'<div><b class="mono">{esc(facts["holdout_digest"][:12])}</b><span>digest committed before dispatch</span></div></div>'
         + art("sealed-envelope", "corner")))
     slides.append(slide(
-        f"The whole run cost {total_tok / 1e6:,.0f}M tokens, about ${total_cost:,.0f} at list prices.",
+        usage_claim(total_tok, total_cost),
         hbars([(s, c) for s, c, _, _ in costs], unit="", fmt=lambda v: f"${v:,.2f}",
               accent={s: (INDIGO if fam.get(s) == "Codex" else HOT) for s, *_ in costs})
-        + '<p class="note">Band\'s own usage export, list-price equivalent. Pink: Claude seats. Indigo: Codex seats.</p>'))
+        + '<p class="note">BAND usage export. Pink: Claude. Indigo: Codex. The OpenCode auditor runs on Featherless outside this export and is reported separately in FACTORY.md.</p>'))
     if facts.get("limits"):
         slides.append(slide(
             "What it does not do yet.",
