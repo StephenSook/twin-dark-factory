@@ -4,7 +4,16 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["floor/**", "evidence/floor.json", ".github/workflows/pages.yml"]
+    paths:
+      - "README.md"
+      - "FACTORY.md"
+      - "JUDGE-GUIDE.md"
+      - "deploy/README.md"
+      - "floor/**"
+      - "evidence/floor.json"
+      - "evidence/public-claims.json"
+      - "tools/check_public_claims.py"
+      - ".github/workflows/pages.yml"
 permissions:
   contents: read
   pages: write
@@ -41,6 +50,35 @@ jobs:
           path.write_text(text.replace(old, new))
           PY
           touch _site/.nojekyll
+      - name: Check the rendered public claims
+        run: |
+          python3 -m http.server 4173 --directory _site > /tmp/factory-floor-http.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          python3 - <<'PY'
+          import time
+          import urllib.request
+          for attempt in range(20):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:4173/", timeout=2) as response:
+                      if response.status == 200:
+                          break
+              except Exception:
+                  if attempt == 19:
+                      raise
+                  time.sleep(0.25)
+          PY
+          google-chrome --headless=new --no-sandbox --disable-gpu --virtual-time-budget=5000 \
+            --dump-dom http://127.0.0.1:4173/ > /tmp/factory-floor-rendered.html
+          python3 - <<'PY'
+          from pathlib import Path
+          text = Path("/tmp/factory-floor-rendered.html").read_text()
+          if 'class="stat"' not in text or "Loading the run" in text:
+              raise SystemExit("Factory Floor did not render its measured claims")
+          PY
+          python3 tools/check_public_claims.py --evidence-root . evidence/public-claims.json \
+            README.md FACTORY.md JUDGE-GUIDE.md floor/index.html deploy/README.md \
+            /tmp/factory-floor-rendered.html
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: _site

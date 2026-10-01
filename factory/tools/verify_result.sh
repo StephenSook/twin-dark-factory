@@ -94,7 +94,20 @@ else
   fail "evidence/claim-evidence.json or tools/check_claim_evidence.py missing"
 fi
 
-# 7. No secrets anywhere in history.
+# 7. Every public text unit has an explicit checked disposition.
+if [ -f "$R/evidence/public-claims.json" ] && [ -f "$HERE/check_public_claims.py" ]; then
+  "$PY" "$HERE/check_public_claims.py" --evidence-root "$R" \
+    --allow-absent "$R/evidence/public-claims.json" \
+    "$R/README.md" "$R/FACTORY.md" "$R/JUDGE-GUIDE.md" \
+    "$R/floor/index.html" "$R/deploy/README.md" \
+    || fails=$((fails + 1))
+elif [ "${DEV_RUN:-}" = 1 ]; then
+  echo "NOTE  development run has no complete public-claims matrix"
+else
+  fail "evidence/public-claims.json or tools/check_public_claims.py missing"
+fi
+
+# 8. No secrets anywhere in history.
 if command -v gitleaks >/dev/null; then
   gitleaks git "$R" --no-banner --redact > "$WORK/leaks.log" 2>&1 \
     && pass "gitleaks: full history clean" || { fail "gitleaks found leaks (see $WORK/leaks.log)"; tail -5 "$WORK/leaks.log"; }

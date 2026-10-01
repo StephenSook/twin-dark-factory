@@ -3,6 +3,7 @@
 import hashlib
 import json
 import pathlib
+import shutil
 import subprocess
 import tempfile
 
@@ -81,13 +82,14 @@ with tempfile.TemporaryDirectory() as tmp:
     sessions_path = tmp / "sessions.json"
     facts_path = tmp / "facts.json"
     claims_path = tmp / "claims.json"
+    public_claims_path = tmp / "public-claims.json"
     room_path.write_text(json.dumps(room))
     sessions_path.write_text(json.dumps({"sessions": [{
         "attribution": {"chatIds": ["room-test"], "peerName": "stephensookra/gatekeeper"},
         "models": [{"model": "gpt-6-astra"}], "inputTokens": 10, "outputTokens": 5,
         "cacheCreationTokens": 0, "cacheReadTokens": 0, "totalCost": 0.25,
     }]}))
-    facts_path.write_text(json.dumps({
+    facts = {
         "track": "pocketful",
         "one_line": "Six seats built and checked the judged result from one dispatch.",
         "room_sha256": hashlib.sha256(room_path.read_bytes()).hexdigest(),
@@ -99,14 +101,45 @@ with tempfile.TemporaryDirectory() as tmp:
         "featherless_note": "The inference key cannot read the provider billing meter.",
         "check_commands": ["python3 tools/check_room.py room.json"],
         "limits": ["Provider billing telemetry is unavailable to the inference key."],
-    }))
+    }
+    facts_path.write_text(json.dumps(facts))
     claims_path.write_text(json.dumps({"claims": claims}))
 
-    result = subprocess.run(
-        ["bash", str(PACKAGER), str(repo), str(room_path), str(sessions_path), str(facts_path), str(claims_path)],
-        capture_output=True,
-        text=True,
+    public_claims_path.write_text(json.dumps({
+        "technology_terms": [],
+        "claims": [{"text": "This absent claim was cut.", "status": "CUT", "evidence": []}],
+    }))
+
+    package_command = [
+        "bash", str(PACKAGER), str(repo), str(room_path), str(sessions_path),
+        str(facts_path), str(claims_path), str(public_claims_path),
+    ]
+    incomplete = subprocess.run(package_command, capture_output=True, text=True)
+    if incomplete.returncode == 0:
+        print("incomplete public-claims matrix was accepted")
+        raise SystemExit(1)
+    unmapped = []
+    for line in incomplete.stdout.splitlines():
+        if line.startswith("unmapped public claim in "):
+            unmapped.append(line.split(": ", 1)[1])
+    if not unmapped:
+        print(incomplete.stdout)
+        print(incomplete.stderr)
+        raise SystemExit("packager did not report unmapped public claims")
+    # The real checker proved that an incomplete matrix fails above. Isolate the
+    # packager mechanics below with a test double so this test cannot certify
+    # public prose by copying that same prose into a fake evidence field.
+    fixture_factory = tmp / "factory-fixture"
+    shutil.copytree(ROOT / "factory", fixture_factory)
+    fixture_checker = fixture_factory / "tools" / "check_public_claims.py"
+    fixture_checker.write_text(
+        "#!/usr/bin/env python3\n"
+        "print('PASS  public text occurrences map in package integration fixture')\n",
+        encoding="utf-8",
     )
+    fixture_packager = fixture_factory / "tools" / "package_result.sh"
+    fixture_command = [str(fixture_packager), *package_command[2:]]
+    result = subprocess.run(fixture_command, capture_output=True, text=True)
     if result.returncode != 0:
         print(result.stdout)
         print(result.stderr)
@@ -127,10 +160,14 @@ with tempfile.TemporaryDirectory() as tmp:
         and "Stages reached: 4 of 4" in readme
         and "Human messages after dispatch: 0" in readme
         and (repo / "evidence" / "claim-evidence.json").is_file()
+        and (repo / "evidence" / "public-claims.json").is_file()
+        and (repo / "tools" / "check_public_claims.py").is_file()
         and (repo / ".github" / "workflows" / "verify.yml").is_file()
         and (repo / ".github" / "workflows" / "demo-image.yml").is_file()
         and (repo / ".github" / "workflows" / "pages.yml").is_file()
         and "Factory Floor is public" in (repo / ".github" / "workflows" / "pages.yml").read_text()
+        and "Check the rendered public claims" in (repo / ".github" / "workflows" / "pages.yml").read_text()
+        and "public text occurrences map" in result.stdout
         and "PASS  packaged measured result evidence" in result.stdout
     )
     if not good:
