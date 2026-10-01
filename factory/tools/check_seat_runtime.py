@@ -46,7 +46,9 @@ for label, item in (("parked", parked[0]), ("room-bound", bound[0])):
         )
     if spawn.get("auth_mode") != "inherit":
         raise SystemExit(f"seat {seat} {label} auth mode is not inherit")
-    actual_model = (runtime.get("thread") or {}).get("model")
+    # Claude Code runtimes record the model in their own block; Codex and OpenCode in the thread.
+    model_block = "claude_code" if expected_transport == "claude-code-cli" else "thread"
+    actual_model = (runtime.get(model_block) or {}).get("model")
     if not isinstance(actual_model, str) or not actual_model:
         raise SystemExit(f"seat {seat} {label} model identifier is missing")
     if expected_model not in actual_model:
