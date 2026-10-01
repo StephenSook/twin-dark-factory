@@ -11,12 +11,12 @@ Standard library only. If the service exits, the proxy exits, so the host restar
 """
 import http.client
 import http.server
+import base64
 import json
 import os
 import pathlib
 import posixpath
 import re
-import shlex
 import subprocess
 import sys
 import threading
@@ -24,7 +24,6 @@ import time
 
 PUBLIC_PORT = int(os.environ.get("PORT", "10000"))
 UP_PORT = int(os.environ.get("DEMO_UPSTREAM_PORT", "8081"))
-APP_CMD = os.environ.get("DEMO_APP_CMD", "python -m app.main")
 RESET_SECONDS = int(os.environ.get("DEMO_RESET_SECONDS", "3600"))
 RATE = int(os.environ.get("DEMO_RATE_PER_10S", "120"))
 MAX_BODY = int(os.environ.get("DEMO_MAX_BODY", str(1 << 20)))
@@ -33,6 +32,25 @@ HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", 
        "trailer", "transfer-encoding", "upgrade", "host", "content-length"}
 state = {"last_reset": None, "last_reset_status": None}
 buckets, blk = {}, threading.Lock()
+
+
+def decode_app_argv(encoded):
+    """Decode the built image's exact entrypoint plus command without a shell round trip."""
+    if not encoded:
+        return ["python", "-m", "app.main"]
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+        argv = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("DEMO_APP_ARGV_B64 is not valid base64 JSON") from exc
+    if not isinstance(argv, list) or not argv or not all(
+        isinstance(value, str) and value and "\x00" not in value for value in argv
+    ):
+        raise ValueError("DEMO_APP_ARGV_B64 must encode a nonempty array of nonempty strings")
+    return argv
+
+
+APP_ARGV = decode_app_argv(os.environ.get("DEMO_APP_ARGV_B64"))
 
 
 def canonical(raw):
@@ -143,7 +161,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def handle_any(self):
-        ip = (self.headers.get("X-Forwarded-For") or self.client_address[0]).split(",")[0].strip()
+        # The request can forge forwarding headers. Rate-limit on the socket peer instead.
+        ip = self.client_address[0]
+        if not allowed(ip):
+            return self.reply(429, {"error": "rate_limited"}, {"Retry-After": "10"})
         if self.path == "/__demo/status":
             return self.reply(200, {"reset_every_seconds": RESET_SECONDS, **state})
         canon = canonical(self.path)
@@ -153,8 +174,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if blocked(path):
             return self.reply(404, {"error": "not_found", "detail": "test endpoints are closed on the public demo"})
         target = path + ("?" + query if query else "")
-        if not allowed(ip):
-            return self.reply(429, {"error": "rate_limited"}, {"Retry-After": "10"})
         length = int(self.headers.get("Content-Length") or 0)
         if length > MAX_BODY:
             return self.reply(413, {"error": "body_too_large"})
@@ -180,8 +199,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 def main():
     env = dict(os.environ, PORT=str(UP_PORT))
-    app = subprocess.Popen(shlex.split(APP_CMD), env=env)
-    log(f"started service '{APP_CMD}' on 127.0.0.1:{UP_PORT} (pid {app.pid})")
+    app = subprocess.Popen(APP_ARGV, env=env)
+    log(f"started service {json.dumps(APP_ARGV)} on 127.0.0.1:{UP_PORT} (pid {app.pid})")
     if not wait_healthy():
         log("service never became healthy")
         app.kill()

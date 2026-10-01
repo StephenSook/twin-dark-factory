@@ -5,7 +5,7 @@ a small front door (`proxy.py`, standard library only):
 
 - `/_test/*` answers 404. The spec leaves reset, export and import unauthenticated, which is right
   for a test harness and wrong for a public URL.
-- Each client address is rate limited (120 requests per 10 seconds) and bodies are capped at 1 MiB.
+- The connection address is rate limited (120 requests per 10 seconds) and bodies are capped at 1 MiB.
 - Every hour the front door reseeds the service from `seed.json` through the service's own reset
   endpoint, so the demo accounts always work. `/__demo/status` shows the last reseed.
 - Responses are passed through unchanged, including the service's own security headers.
@@ -17,7 +17,8 @@ Build and run locally:
 
 ```
 docker build -t app stage-4
-docker build -t demo --build-arg APP_IMAGE=app --build-arg APP_CMD="<the CMD from stage-4/Dockerfile>" deploy
+APP_ARGV_B64="<base64 JSON array from the built image's Entrypoint plus Cmd>"
+docker build -t demo --build-arg APP_IMAGE=app --build-arg APP_ARGV_B64="$APP_ARGV_B64" deploy
 docker run --rm -p 10000:10000 demo
 ```
 
