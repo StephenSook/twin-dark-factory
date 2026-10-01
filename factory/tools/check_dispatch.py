@@ -39,9 +39,14 @@ seats = list(json.loads((F / "seats.json").read_text()))
 if not seats:
     sys.exit("seats.json names no seat")
 want = set(seats)
-tracked = subprocess.run(["git", "ls-files", "--", "factory/mandates"], cwd=ROOT,
-                         capture_output=True, text=True, check=True).stdout.split()
-same("tracked mandates", {pathlib.Path(p).stem for p in tracked if p.endswith(".md")}, want)
+if (ROOT / ".git").exists():
+    tracked = subprocess.run(["git", "ls-files", "--", "factory/mandates"], cwd=ROOT,
+                             capture_output=True, text=True, check=True).stdout.split()
+    same("tracked mandates", {pathlib.Path(p).stem for p in tracked if p.endswith(".md")}, want)
+else:
+    # A deployed factory copy has no Git metadata; its files were hash-checked against the
+    # committed tree when synced, so the mandates on disk are the committed set.
+    same("deployed mandates", {p.stem for p in (F / "mandates").glob("*.md")}, want)
 same("role sources", {p.stem for p in (F / "src").glob("*.md")} - {"agreement"}, want)
 
 runs = json.loads((D / "runs.json").read_text())
