@@ -43,6 +43,8 @@ jobs:
         run: python factory/tools/test_seat_runtime.py
       - name: Preflight requires fresh Claude headroom
         run: python factory/tools/test_usage_meter.py
+      - name: Preflight requires Codex plan headroom or a covering credit balance
+        run: python factory/tools/test_codex_capacity.py
       - name: Public claims cite distinct verbatim room evidence
         run: python factory/tools/test_claim_evidence.py
       - name: Every public text unit has a checked disposition

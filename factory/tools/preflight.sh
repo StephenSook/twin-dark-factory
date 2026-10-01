@@ -93,19 +93,9 @@ chk "all runnable dispatches match their generators" python3 "$FACTORY/tools/che
 [ -f "$DISPATCH" ] && pass "dispatch file sha256 $(sha256sum "$DISPATCH" | cut -c1-64)" \
   || fail "dispatch file missing"
 
-# Headroom: a full run used about 35% of the Codex week.
-cx=$(python3 - <<'EOF'
-import json, glob, os
-fs = sorted(glob.glob(os.path.expanduser('~/.codex/sessions/*/*/*/*.jsonl')), key=os.path.getmtime)
-last = None
-for f in fs[-3:]:
-    for l in open(f):
-        if '"used_percent"' in l:
-            last = json.loads(l)['payload']['rate_limits']['primary']['used_percent']
-print(last if last is not None else -1)
-EOF
-)
-awk "BEGIN{exit !($cx >= 0 && $cx < 60)}" && pass "Codex weekly usage ${cx}% (< 60)" || fail "Codex weekly usage ${cx}% (want < 60)"
+# Headroom: a full run used about 35% of the Codex week, or a credit balance covers it.
+cx=$(python3 "$FACTORY/tools/check_codex_capacity.py" 2>&1) && pass "${cx#PASS  }" \
+  || fail "${cx#FAIL  }"
 cl=${CLAUDE_WEEKLY_USED_PERCENT:-}
 cl_at=${CLAUDE_METER_AT:-}
 if python3 "$FACTORY/tools/check_usage_meter.py" "$cl" "$cl_at" 10 600 >/dev/null 2>&1; then
