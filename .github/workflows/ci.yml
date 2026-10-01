@@ -47,6 +47,8 @@ jobs:
         run: python factory/tools/test_claim_evidence.py
       - name: Every public text unit has a checked disposition
         run: python factory/tools/test_public_claims.py
+      - name: Factory Floor copy matches the packaged six-seat result
+        run: python factory/tools/test_factory_floor.py
       - name: Result packaging preserves every band-written stage byte
         run: python factory/tools/test_result_package.py
 
