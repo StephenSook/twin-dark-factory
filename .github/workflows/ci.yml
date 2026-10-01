@@ -12,8 +12,8 @@ jobs:
     name: Mandates are built from source and generic
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - name: Fetch the organizers' vocabulary list at the kickoff commit
@@ -46,7 +46,9 @@ jobs:
     name: Commit guard and holdout seal
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Workflow dependencies are immutable commit SHAs
+        run: python3 factory/tools/test_workflow_pins.py
       - name: Result-repository commit guard refuses bad commits and accepts good ones
         run: sh factory/tools/test_pre_commit.sh
       - name: Holdout seal verifies, rejects tampering and refuses an empty folder
@@ -60,7 +62,7 @@ jobs:
     name: No secrets in full history
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Scan every commit with gitleaks (checksum-verified release binary)
