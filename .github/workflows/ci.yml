@@ -39,6 +39,8 @@ jobs:
         run: python factory/tools/test_room_participants.py
       - name: Design-kit manifest detects missing, changed and extra files
         run: sh factory/tools/test_design_kit.sh
+      - name: Seat runtimes cannot stay bound to an old room or repository
+        run: python factory/tools/test_seat_runtime.py
 
   guard:
     name: Commit guard and holdout seal

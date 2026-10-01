@@ -35,6 +35,15 @@ if participant_output=$(band room participants "$ROOM_ID" 2>/dev/null) \
 else
   fail "room does not contain exactly the configured seats"
 fi
+for s in $SEATS; do
+  if jam status --as "stephensookra/$s" --json 2>/dev/null \
+    | python3 "$FACTORY/tools/check_seat_runtime.py" \
+        "$REPO" "$ROOM_ID" "$s" "$FACTORY/seats.json" >/dev/null; then
+    pass "seat $s runtime is bound to this room and result repo"
+  else
+    fail "seat $s runtime is stale, misconfigured, or bound to another repo"
+  fi
+done
 
 # Mandates: the files the seats read are the committed ones, and generic.
 for s in $SEATS; do
