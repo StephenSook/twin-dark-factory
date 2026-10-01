@@ -2,7 +2,7 @@
 
 Our factory for the WeAreDevelopers x BAND "Dark Factory" hackathon, pocketful track.
 
-A band of five seats in BAND builds the product. The seats run on two model families.
+A band of six seats in BAND builds the product. The seats run on three model families.
 
 - A **modeler** (Codex) turns the written requirements into an executable model, without ever
   reading the product code. The model is small, slow and obviously correct.
@@ -12,6 +12,9 @@ A band of five seats in BAND builds the product. The seats run on two model fami
   - under 50 concurrent requests, the results can be explained by some one-at-a-time order
   - the stated invariants hold at every read
   - the checks catch faults deliberately planted in the code
+- An **auditor** (OpenCode with DeepSeek on Featherless) compares the written requirements with
+  the modeler's ledger without reading product code, looking for shared misreadings that would
+  change the product's behaviour.
 - A **coordinator** (Claude Code) plans the work, pastes the full requirements into every
   handoff, and accepts only what the gatekeeper accepted.
 
