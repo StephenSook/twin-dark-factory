@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Pre-dispatch preflight on the factory machine. Run right before the one dispatch of a judged run.
 # Every line is PASS or FAIL; exit 1 on any FAIL. Nothing here changes state.
+# CLAUDE_WEEKLY_USED_PERCENT and CLAUDE_METER_AT must come from a meter reading
+# taken no more than ten minutes before this command starts.
 #
 #   preflight.sh <result repo> <factory dir> <kickoff dir> <dispatch file> <room id> [seats...]
 set -u
@@ -104,6 +106,12 @@ print(last if last is not None else -1)
 EOF
 )
 awk "BEGIN{exit !($cx >= 0 && $cx < 60)}" && pass "Codex weekly usage ${cx}% (< 60)" || fail "Codex weekly usage ${cx}% (want < 60)"
-echo "NOTE  check Claude weekly usage by hand at claude.ai/settings/usage before dispatching"
+cl=${CLAUDE_WEEKLY_USED_PERCENT:-}
+cl_at=${CLAUDE_METER_AT:-}
+if python3 "$FACTORY/tools/check_usage_meter.py" "$cl" "$cl_at" 10 600 >/dev/null 2>&1; then
+  pass "Claude weekly usage ${cl}% (< 10), observed at ${cl_at}"
+else
+  fail "Claude meter missing, stale, malformed, or at least 10% used"
+fi
 
 [ "$fails" = 0 ] && { echo "RESULT PASS"; exit 0; } || { echo "RESULT FAIL ($fails)"; exit 1; }
