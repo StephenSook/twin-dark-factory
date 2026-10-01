@@ -61,5 +61,9 @@ check("wrong transport fails", lambda s, _p: s["peer"]["host_sessions"][0]["runt
       False, "transport")
 check("API-key auth fails", lambda s, _p: s["peer"]["host_sessions"][1]["runtime"]["spawn"].update(auth_mode="api_key"),
       False, "auth mode")
+check("missing model identifier fails", lambda s, _p: s["peer"]["host_sessions"][0]["runtime"]["thread"].pop("model"),
+      False, "model identifier is missing")
+check("wrong model identifier fails", lambda s, _p: s["peer"]["host_sessions"][1]["runtime"]["thread"].update(model="other-model"),
+      False, "does not contain")
 print(f"failures: {len(failures)}")
 sys.exit(1 if failures else 0)
