@@ -128,6 +128,9 @@ with tempfile.TemporaryDirectory() as tmp:
         and "Human messages after dispatch: 0" in readme
         and (repo / "evidence" / "claim-evidence.json").is_file()
         and (repo / ".github" / "workflows" / "verify.yml").is_file()
+        and (repo / ".github" / "workflows" / "demo-image.yml").is_file()
+        and (repo / ".github" / "workflows" / "pages.yml").is_file()
+        and "Factory Floor is public" in (repo / ".github" / "workflows" / "pages.yml").read_text()
         and "PASS  packaged measured result evidence" in result.stdout
     )
     if not good:

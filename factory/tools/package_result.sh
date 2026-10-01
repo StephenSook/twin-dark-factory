@@ -47,6 +47,7 @@ for name in Dockerfile README.md proxy.py seed.json; do
 done
 copy_file "$FACTORY/result-ci/verify.yml" "$RESULT/.github/workflows/verify.yml"
 copy_file "$FACTORY/result-ci/demo-image.yml" "$RESULT/.github/workflows/demo-image.yml"
+copy_file "$FACTORY/result-ci/pages.yml" "$RESULT/.github/workflows/pages.yml"
 
 stage_count=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["stage_claims"]))' "$RESULT/evidence/facts.json")
 python3 "$RESULT/tools/check_room.py" "$RESULT/room.json" --expected-accepts "$stage_count"
@@ -73,7 +74,8 @@ cmp "$recomputed" "$RESULT/evidence/floor.json"
 git -C "$RESULT" add README.md FACTORY.md JUDGE-GUIDE.md room.json \
   docs/FACTORY.template.md evidence/floor.json evidence/usage-sessions.json \
   evidence/facts.json evidence/claim-evidence.json floor deploy tools \
-  .github/workflows/verify.yml .github/workflows/demo-image.yml
+  .github/workflows/verify.yml .github/workflows/demo-image.yml \
+  .github/workflows/pages.yml
 git -C "$RESULT" diff --cached --check
 if git -C "$RESULT" diff --cached --name-only | while IFS= read -r path; do
   case "$path" in stage-[0-9]*) exit 1;; esac

@@ -20,8 +20,8 @@ for directory in WORKFLOW_DIRS:
             if not PINNED.fullmatch(action):
                 failures.append(f"{path.relative_to(ROOT)}: mutable or invalid action reference {action}")
 
-if seen < 8:
-    failures.append(f"workflow action reference floor failed: found {seen}, expected at least 8")
+if seen < 11:
+    failures.append(f"workflow action reference floor failed: found {seen}, expected at least 11")
 
 if failures:
     print("\n".join(failures), file=sys.stderr)
