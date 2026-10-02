@@ -110,8 +110,16 @@ def rejection_quote(preview):
     return re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0]
 
 
+def require_rejection_records(floor):
+    """Fail with a fix, not a KeyError, on a floor.json written before rejection records existed."""
+    totals = floor.get("totals") or {}
+    if not isinstance(floor.get("rejections"), list) or "rejects_resolved_by_accepted_revision" not in totals:
+        sys.exit("floor.json predates rejection records; regenerate it with tools/floor_data.py")
+
+
 def featured_rejection(floor, facts):
     """The rejection the judge-facing copy shows: facts may name one, else the first with a follow-up."""
+    require_rejection_records(floor)
     rejections = floor["rejections"]
     if not rejections:
         return None
@@ -153,10 +161,12 @@ def rejection_record(commits, accepts, reject_t, revision, message_id):
     record["stages"] = sorted(stages)
     writers = [c for c in commits[index + 1:]
                if c["by_seat"] and c["author"] in ("builder", "surface") and stages.intersection(c["stages"])]
-    followup = next((c for c in writers if c["t"] >= reject_t - CLOCK_SLACK_S), None)
+    later = [c for c in writers if c["t"] >= reject_t - CLOCK_SLACK_S]
+    followup = min(later, key=lambda c: c["t"]) if later else None  # earliest in time, not log order
     if followup:
         record["followup"] = {k: followup[k] for k in ("sha", "t", "author", "subject")}
-    newer = {c["sha"] for c in writers}
+    # Only a revision that touches every rejected stage can resolve the rejection.
+    newer = {c["sha"] for c in writers if stages.issubset(c["stages"])}
     for accept_t, accept_rev, accept_id in sorted(accepts):
         if accept_t > reject_t and any(sha.startswith(accept_rev) for sha in newer):
             record["resolved_by"] = {"rev": accept_rev, "t": accept_t, "message_id": accept_id}

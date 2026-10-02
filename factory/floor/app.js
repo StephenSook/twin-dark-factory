@@ -17,6 +17,9 @@
 
   function render(f) {
     const T = f.totals;
+    if (!Array.isArray(f.rejections) || T.rejects_resolved_by_accepted_revision === undefined) {
+      throw new Error("floor.json predates rejection records; regenerate it with tools/floor_data.py");
+    }
     const hands = T.human_messages_after_dispatch === 0;
     $("h1").textContent = `${f.seats.length} agents built it. ${hands ? "Nobody touched it." : `A human wrote ${T.human_messages_after_dispatch} times.`}`;
     const g = f.generated_from;

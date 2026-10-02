@@ -295,6 +295,7 @@ def slide(headline, body, cls="", kicker=""):
 def build(floor, sessions_path, facts, draft):
     T = floor["totals"]
     room = floor["generated_from"]["room_id"]
+    floor_tools().require_rejection_records(floor)
     costs = seat_costs(sessions_path, room)
     fam = {s: model_family(models) for s, _, _, models in costs}
     total_cost = sum(c for _, c, _, _ in costs)

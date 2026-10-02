@@ -227,6 +227,7 @@ def main():
     ap.add_argument("--draft", action="store_true")
     a = ap.parse_args()
     repo, floor, facts = pathlib.Path(a.repo), json.load(open(a.floor)), json.load(open(a.facts))
+    _floor_tools().require_rejection_records(floor)
     track = facts.get("track", "pocketful")
     if not re.fullmatch(r"[a-z0-9_-]+", track):
         sys.exit("facts track must contain only lowercase letters, digits, underscores or hyphens")

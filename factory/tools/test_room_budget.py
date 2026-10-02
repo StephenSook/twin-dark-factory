@@ -553,6 +553,17 @@ def run_rejection_timing_checks():
     late_commits = commits + [{"sha": "b" * 40, "t": 330.0, "author": "surface", "subject": "after the verdict",
                                "stages": [1], "by_seat": True}]
     late = tools.rejection_record(late_commits, [(400.0, "bbbbbbb", "accept-id")], 300.0, "ccccccc", "reject-id")
+    log_order = tools.rejection_record(
+        [commits[0], dict(commits[1], sha="c2" * 20, t=330.0), dict(commits[1], sha="b2" * 20, t=310.0)],
+        [], 300.0, "ccccccc", "reject-id")
+    partial = tools.rejection_record(
+        [dict(commits[0], stages=[1, 2]), dict(commits[1], t=320.0)],
+        [(400.0, "aaaaaaa", "accept-id")], 300.0, "ccccccc", "reject-id")
+    try:
+        tools.featured_rejection({"totals": {"rejects": 0}}, {})
+        old_floor_refused = False
+    except SystemExit as error:
+        old_floor_refused = "predates rejection records" in str(error)
     same_second = tools.rejection_record(
         [commits[0], dict(commits[1], t=299.5)], [], 300.0, "ccccccc", "reject-id")
     good = (
@@ -561,6 +572,9 @@ def run_rejection_timing_checks():
         and late["followup"]["sha"] == "b" * 40
         and late["resolved_by"]["rev"] == "bbbbbbb"
         and same_second["followup"]["sha"] == "a" * 40
+        and log_order["followup"]["sha"] == "b2" * 20
+        and partial["resolved_by"] is None
+        and old_floor_refused
         and tools.gap_phrase(0) == "under a minute"
         and tools.gap_phrase(61) == "1 minute"
         and tools.rejection_quote("@a @b REJECT abc1234: expected x. Then more.") == "expected x."
