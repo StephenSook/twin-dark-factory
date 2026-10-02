@@ -11,7 +11,8 @@ on:
       - "deploy/README.md"
       - "floor/**"
       - "evidence/floor.json"
-      - "evidence/public-claims.json"
+      - "room.json"
+      - "tools/check_public_copy.py"
       - "tools/check_public_claims.py"
       - ".github/workflows/pages.yml"
 permissions:
@@ -50,7 +51,7 @@ jobs:
           path.write_text(text.replace(old, new))
           PY
           touch _site/.nojekyll
-      - name: Check the rendered public claims
+      - name: Check the rendered public copy
         run: |
           python3 -m http.server 4173 --directory _site > /tmp/factory-floor-http.log 2>&1 &
           server_pid=$!
@@ -76,7 +77,7 @@ jobs:
           if 'class="stat"' not in text or "Loading the run" in text:
               raise SystemExit("Factory Floor did not render its measured claims")
           PY
-          python3 tools/check_public_claims.py --evidence-root . evidence/public-claims.json \
+          python3 tools/check_public_copy.py --quotes room.json evidence/floor.json \
             README.md FACTORY.md JUDGE-GUIDE.md floor/index.html deploy/README.md \
             /tmp/factory-floor-rendered.html
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

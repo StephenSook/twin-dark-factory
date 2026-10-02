@@ -13,7 +13,7 @@ printf 'Harness: test\n' > "$SRC/mandates/builder.md"
 printf '# result\n' > "$SRC/README.md"
 printf '# factory\n' > "$SRC/FACTORY.md"
 printf '# judge\n' > "$SRC/JUDGE-GUIDE.md"
-printf '{"technology_terms":[],"claims":[{"text":"absent","status":"CUT","evidence":[]}]}\n' > "$SRC/evidence/public-claims.json"
+printf '{"events":[]}\n' > "$SRC/evidence/floor.json"
 python3 - "$SRC/room.json" "$SRC/evidence/claim-evidence.json" <<'PY'
 import json, pathlib, sys
 specs = [
@@ -35,7 +35,7 @@ pathlib.Path(sys.argv[2]).write_text(json.dumps({"claims": claims}))
 PY
 git -C "$SRC" init -q -b main
 git -C "$SRC" add stage-1/Dockerfile stage-1/RUN.md mandates/builder.md room.json \
-  README.md FACTORY.md JUDGE-GUIDE.md evidence/claim-evidence.json evidence/public-claims.json
+  README.md FACTORY.md JUDGE-GUIDE.md evidence/claim-evidence.json evidence/floor.json
 git -C "$SRC" -c user.name=builder -c user.email=builder@band.local commit -q -m fixture
 
 cat > "$T/bin/fake-python" <<'EOF'
@@ -56,7 +56,7 @@ case " $* " in
     ;;
   *"check_room.py"*) exit 0 ;;
   *"check_claim_evidence.py"*) exec python3 "$@" ;;
-  *"check_public_claims.py"*) exit "${FAKE_PUBLIC_CLAIMS_STATUS:-0}" ;;
+  *"check_public_copy.py"*) exit "${FAKE_PUBLIC_COPY_STATUS:-0}" ;;
 esac
 echo "unexpected fake-python arguments: $*" >&2
 exit 97
@@ -85,27 +85,27 @@ grep -q 'RESULT PASS' "$T/pass.log"
 echo "ok   zero harness process with a valid summary is accepted"
 
 if PATH="$T/bin:$PATH" PYTHON="$T/bin/fake-python" FAKE_RUN_STATUS=0 \
-  FAKE_PUBLIC_CLAIMS_STATUS=31 \
-  bash "$HERE/verify_result.sh" "$SRC" "$T/kickoff" pocketful 1 > "$T/bad-public-claims.log" 2>&1; then
-  echo "FAIL a failing public-claims checker was ignored"
+  FAKE_PUBLIC_COPY_STATUS=31 \
+  bash "$HERE/verify_result.sh" "$SRC" "$T/kickoff" pocketful 1 > "$T/bad-public-copy.log" 2>&1; then
+  echo "FAIL a failing public copy check was ignored"
   exit 1
 fi
-grep -q 'RESULT FAIL' "$T/bad-public-claims.log"
-echo "ok   a failing public-claims checker fails result verification"
+grep -q 'RESULT FAIL' "$T/bad-public-copy.log"
+echo "ok   a failing public copy check fails result verification"
 
-mv "$SRC/evidence/public-claims.json" "$T/public-claims.json"
-git -C "$SRC" add -u evidence/public-claims.json
-git -C "$SRC" -c user.name=builder -c user.email=builder@band.local commit -q -m remove-public-claims
+mv "$SRC/evidence/floor.json" "$T/floor.json"
+git -C "$SRC" add -u evidence/floor.json
+git -C "$SRC" -c user.name=builder -c user.email=builder@band.local commit -q -m remove-floor
 if PATH="$T/bin:$PATH" PYTHON="$T/bin/fake-python" FAKE_RUN_STATUS=0 \
-  bash "$HERE/verify_result.sh" "$SRC" "$T/kickoff" pocketful 1 > "$T/no-public-claims.log" 2>&1; then
-  echo "FAIL missing complete public-claims matrix was accepted"
+  bash "$HERE/verify_result.sh" "$SRC" "$T/kickoff" pocketful 1 > "$T/no-floor.log" 2>&1; then
+  echo "FAIL a result without floor evidence passed the copy check"
   exit 1
 fi
-grep -q 'FAIL  evidence/public-claims.json or tools/check_public_claims.py missing' "$T/no-public-claims.log"
-echo "ok   judged result without a complete public-claims matrix is refused"
-mv "$T/public-claims.json" "$SRC/evidence/public-claims.json"
-git -C "$SRC" add evidence/public-claims.json
-git -C "$SRC" -c user.name=builder -c user.email=builder@band.local commit -q -m restore-public-claims
+grep -q 'FAIL  tools/check_public_copy.py or evidence/floor.json missing' "$T/no-floor.log"
+echo "ok   judged result without the copy check inputs is refused"
+mv "$T/floor.json" "$SRC/evidence/floor.json"
+git -C "$SRC" add evidence/floor.json
+git -C "$SRC" -c user.name=builder -c user.email=builder@band.local commit -q -m put-floor-back
 
 mv "$SRC/evidence/claim-evidence.json" "$T/claim-evidence.json"
 git -C "$SRC" add -u evidence/claim-evidence.json

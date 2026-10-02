@@ -94,17 +94,16 @@ else
   fail "evidence/claim-evidence.json or tools/check_claim_evidence.py missing"
 fi
 
-# 7. Every public text unit has an explicit checked disposition.
-if [ -f "$R/evidence/public-claims.json" ] && [ -f "$HERE/check_public_claims.py" ]; then
-  "$PY" "$HERE/check_public_claims.py" --evidence-root "$R" \
-    --allow-absent "$R/evidence/public-claims.json" \
+# 7. Public copy carries no pending value, banned typography or AI-tone word.
+if [ -f "$HERE/check_public_copy.py" ] && [ -f "$R/evidence/floor.json" ]; then
+  "$PY" "$HERE/check_public_copy.py" --quotes "$R/room.json" "$R/evidence/floor.json" \
     "$R/README.md" "$R/FACTORY.md" "$R/JUDGE-GUIDE.md" \
     "$R/floor/index.html" "$R/deploy/README.md" \
     || fails=$((fails + 1))
 elif [ "${DEV_RUN:-}" = 1 ]; then
-  echo "NOTE  development run has no complete public-claims matrix"
+  echo "NOTE  development run has no packaged public copy"
 else
-  fail "evidence/public-claims.json or tools/check_public_claims.py missing"
+  fail "tools/check_public_copy.py or evidence/floor.json missing"
 fi
 
 # 8. No secrets anywhere in history.

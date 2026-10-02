@@ -1,20 +1,19 @@
 #!/usr/bin/env bash
 # Package measured evidence outside stage folders. The band remains the only writer of stage code.
-# package_result.sh <result-repo> <room.json> <usage-sessions.json> <facts.json> <claim-evidence.json> <public-claims.json>
+# package_result.sh <result-repo> <room.json> <usage-sessions.json> <facts.json> <claim-evidence.json>
 set -euo pipefail
 
-[ "$#" = 6 ] || { echo "usage: package_result.sh <result-repo> <room.json> <usage-sessions.json> <facts.json> <claim-evidence.json> <public-claims.json>" >&2; exit 2; }
+[ "$#" = 5 ] || { echo "usage: package_result.sh <result-repo> <room.json> <usage-sessions.json> <facts.json> <claim-evidence.json>" >&2; exit 2; }
 RESULT=$(cd "$1" && pwd)
 ROOM=$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$2")
 SESSIONS=$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$3")
 FACTS=$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$4")
 CLAIMS=$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$5")
-PUBLIC_CLAIMS=$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$6")
 HERE=$(cd "$(dirname "$0")" && pwd)
 FACTORY=$(cd "$HERE/.." && pwd)
 
 git -C "$RESULT" rev-parse --is-inside-work-tree >/dev/null
-for path in "$ROOM" "$SESSIONS" "$FACTS" "$CLAIMS" "$PUBLIC_CLAIMS"; do
+for path in "$ROOM" "$SESSIONS" "$FACTS" "$CLAIMS"; do
   [ -f "$path" ] || { echo "missing input: $path" >&2; exit 1; }
 done
 [ -z "$(git -C "$RESULT" status --porcelain -- 'stage-*')" ] || {
@@ -34,9 +33,8 @@ copy_file "$ROOM" "$RESULT/room.json"
 copy_file "$SESSIONS" "$RESULT/evidence/usage-sessions.json"
 copy_file "$FACTS" "$RESULT/evidence/facts.json"
 copy_file "$CLAIMS" "$RESULT/evidence/claim-evidence.json"
-copy_file "$PUBLIC_CLAIMS" "$RESULT/evidence/public-claims.json"
 
-for name in check_room.py check_claim_evidence.py check_public_claims.py floor_data.py factory_md.py judge_guide.py result_readme.py; do
+for name in check_room.py check_claim_evidence.py check_public_claims.py check_public_copy.py floor_data.py factory_md.py judge_guide.py result_readme.py; do
   copy_file "$FACTORY/tools/$name" "$RESULT/tools/$name"
 done
 copy_file "$FACTORY/tools/verify_result.sh" "$RESULT/tools/verify_result.sh" 0755
@@ -67,8 +65,10 @@ python3 "$RESULT/tools/factory_md.py" \
   --template "$RESULT/docs/FACTORY.template.md" > "$RESULT/FACTORY.md"
 python3 "$RESULT/tools/judge_guide.py" \
   "$RESULT/evidence/floor.json" "$RESULT/evidence/facts.json" > "$RESULT/JUDGE-GUIDE.md"
-python3 "$RESULT/tools/check_public_claims.py" \
-  --evidence-root "$RESULT" --allow-absent "$RESULT/evidence/public-claims.json" \
+# Every number on these surfaces is generated from the evidence files by the generators above, which
+# refuse missing facts, and the central claims are bound to verbatim room messages. The copy check
+# refuses pending values, banned typography and AI-tone words in everything a judge reads.
+python3 "$RESULT/tools/check_public_copy.py" --quotes "$RESULT/room.json" "$RESULT/evidence/floor.json" \
   "$RESULT/README.md" "$RESULT/FACTORY.md" "$RESULT/JUDGE-GUIDE.md" \
   "$RESULT/floor/index.html" "$RESULT/deploy/README.md"
 
@@ -79,7 +79,7 @@ cmp "$recomputed" "$RESULT/evidence/floor.json"
 
 git -C "$RESULT" add README.md FACTORY.md JUDGE-GUIDE.md room.json \
   docs/FACTORY.template.md evidence/floor.json evidence/usage-sessions.json \
-  evidence/facts.json evidence/claim-evidence.json evidence/public-claims.json floor deploy tools \
+  evidence/facts.json evidence/claim-evidence.json floor deploy tools \
   .github/workflows/verify.yml .github/workflows/demo-image.yml \
   .github/workflows/pages.yml
 git -C "$RESULT" diff --cached --check
