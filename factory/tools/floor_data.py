@@ -69,12 +69,12 @@ def delivery(meta) -> tuple[int, int]:
     return extra, failed
 
 
-GIT_FORMAT = "%H%x1f%an%x1f%aI%x1f%s"
+GIT_FORMAT = "%H%x1f%an%x1f%cI%x1f%s"  # committer time: when the commit was made, not authored
 
 
 def git_commits(repo: pathlib.Path):
     """Commits from a repository, or from a saved log file made with:
-    git log --reverse --format='%H%x1f%an%x1f%aI%x1f%s' --name-only > commits.log"""
+    git log --reverse --format='%H%x1f%an%x1f%cI%x1f%s' --name-only > commits.log"""
     if repo.is_file():
         out = repo.read_text()
     else:
@@ -288,7 +288,9 @@ def main():
     # a short and a full hash, counts once; two commits that share a short prefix stay distinct.
     def commit_key(rev):
         hits = [c["sha"] for c in commits if c["sha"].startswith(rev)]
-        return hits[0] if len(hits) == 1 else rev
+        if len(hits) > 1:
+            sys.exit(f"verdict revision {rev} names {len(hits)} commits; refusing ambiguous evidence")
+        return hits[0] if hits else rev
     first = {}
     for e in events:
         for v, full in zip(e["verdicts"], full_revs.get(e["id"], [])):

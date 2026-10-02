@@ -734,10 +734,11 @@ def run_floor_dedup_and_tie_checks():
             return json.loads(out.read_text()) if done.returncode == 0 else {"error": done.stderr[-300:]}
         distinct = run(room_with([f"REJECT {a1} first", f"REJECT {a2} second"]), log)
         same = run(room_with([f"REJECT {b1[:7]} short", f"REJECT {b1} full"]), log)
+        ambiguous = run(room_with(["REJECT abcdef1 one", "REJECT abcdef1 two"]), log)
         repo = tmp / "repo"
-        git = lambda *args, when="2026-01-01T00:00:01+00:00": subprocess.run(
+        git = lambda *args, when="2026-01-01T00:00:01+00:00", authored=None: subprocess.run(
             ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True,
-            env={**os.environ, "GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when,
+            env={**os.environ, "GIT_AUTHOR_DATE": authored or when, "GIT_COMMITTER_DATE": when,
                  "GIT_AUTHOR_NAME": "builder", "GIT_AUTHOR_EMAIL": "b@x", "GIT_COMMITTER_NAME": "builder",
                  "GIT_COMMITTER_EMAIL": "b@x"})
         repo.mkdir()
@@ -753,7 +754,8 @@ def run_floor_dedup_and_tie_checks():
         git("commit", "-q", "-am", "fixed", when="2026-01-01T00:00:02+00:00")
         fixed = git("rev-parse", "HEAD").stdout.strip()
         (repo / "stage-1" / "a.py").write_text("3\n")
-        git("commit", "-q", "-am", "same second", when="2026-01-01T00:00:05+00:00")
+        git("commit", "-q", "-am", "same second", when="2026-01-01T00:00:05+00:00",
+            authored="2026-01-01T00:00:01+00:00")  # reused author time, created at second 5
         boundary = git("rev-parse", "HEAD").stdout.strip()
         tie = run(room_with([f"REJECT {rejected[:7]} bad", f"ACCEPT {fixed[:7]} good"], same_time=True), repo)
     deck_spec = importlib.util.spec_from_file_location("deck_dedup", DECK)
@@ -766,6 +768,7 @@ def run_floor_dedup_and_tie_checks():
         and ((tie.get("rejections") or [{}])[0].get("resolved_by") or {}).get("rev") == fixed[:7]
         and ((tie.get("rejections") or [{}])[0].get("followup") or {}).get("sha") == boundary
         and "2 rejections" in distinct_caption
+        and "refusing ambiguous evidence" in str(ambiguous.get("error"))
     )
     if good:
         print("ok   verdicts de-duplicate by commit and equal timestamps keep export order")
