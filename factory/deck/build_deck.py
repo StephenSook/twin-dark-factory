@@ -16,6 +16,7 @@ import sys
 INK, BODY, PAGE = "#2B2270", "#0B0B0F", "#FFF8E7"
 SUN, BUTTER, AQUA, PINK_T, INDIGO, HOT = "#FFD24A", "#FAED8F", "#A4F6F8", "#FFDBFD", "#3B308F", "#FF3D9A"
 GREEN, RED, GREY = "#0E7A4B", "#C4271B", "#B9B3A6"
+HOT_TEXT = "#A80F57"  # hot pink darkened for text: 6.9:1 on the page, 7.3:1 under white
 
 
 def esc(s):
@@ -135,10 +136,13 @@ def optional_app_slide(facts):
     caption = facts.get("app_caption")
     if not headline or not caption:
         raise SystemExit("app-live artwork requires app_headline and app_caption facts")
+    phone = art("app-phone", "phoneshot")
+    if phone:
+        screenshot = f'<div class="appduo">{screenshot}{phone}</div>'
     return slide(headline, screenshot + f'<p class="note appcaption">{esc(caption)}</p>')
 
 
-def flow_svg(width=1640, height=600):
+def flow_svg(width=1640, height=720):
     def box(x, y, w, h, fill, title, sub):
         return (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="26" fill="{fill}" stroke="{INK}" stroke-width="4"/>'
                 f'<text x="{x + w / 2}" y="{y + h / 2 - 8}" text-anchor="middle" class="bt">{esc(title)}</text>'
@@ -163,6 +167,9 @@ def flow_svg(width=1640, height=600):
         f'<path d="M1360,250 C1360,90 1150,60 925,140" fill="none" stroke="{RED}" stroke-width="6" stroke-dasharray="14 10" marker-end="url(#ahr)"/>',
         f'<text x="1360" y="40" text-anchor="middle" class="bt" style="fill:{RED}">REJECT with a reproduction</text>',
         f'<text x="1360" y="570" text-anchor="middle" class="bt" style="fill:{GREEN}">ACCEPT only when they agree</text>',
+        box(440, 590, 480, 120, "#D9F5E3", "auditor (DeepSeek)", "spec against the ledger, never the code"),
+        arrow(150, 400, 435, 640),
+        arrow(920, 640, 1098, 410),
         "</svg>"])
 
 
@@ -204,6 +211,39 @@ def caught_slide(floor):
         f'{followup_html}</div>')
 
 
+def teamwork_slide(floor, fam):
+    """Who did the work: room actions per seat, plus the handoff totals, all from floor.json."""
+    per_seat = floor.get("per_seat") or {}
+    seats = set(floor.get("seats") or per_seat)
+    rows = sorted(((seat, counts.get("tool_call", 0) + counts.get("text", 0))
+                   for seat, counts in per_seat.items() if seat in seats), key=lambda r: -r[1])
+    rows = [r for r in rows if r[1] > 0]
+    if not rows:
+        return ""
+    T = floor["totals"]
+    colour = {"Codex": INDIGO, "Claude": HOT, "DeepSeek": GREEN}
+    headline = (f"{len(rows)} seats shared the work: {T['handoffs']:,} handoffs in the room, "
+                f"a median of {T['handoff_chars_median']:,} characters each.")
+    return slide(
+        headline,
+        hbars(rows, fmt=lambda v: f"{v:,.0f}",
+              accent={s: colour.get(fam.get(s, "DeepSeek" if s == "auditor" else ""), GREY) for s, _ in rows})
+        + '<p class="note">Room actions per seat: messages plus tool calls, counted from the unchanged room export. '
+          'Pink: Claude. Indigo: Codex. Green: DeepSeek on Featherless.</p>',
+        kicker="Teamwork")
+
+
+def room_moment_slide(facts):
+    """A real screenshot of a handoff in the BAND room, captioned from the facts file."""
+    shot = art("room-moment", "appshot")
+    if not shot:
+        return ""
+    headline, caption = facts.get("room_headline"), facts.get("room_caption")
+    if not headline or not caption:
+        raise SystemExit("room-moment artwork requires room_headline and room_caption facts")
+    return slide(headline, shot + f'<p class="note appcaption">{esc(caption)}</p>', kicker="In the BAND room")
+
+
 def rejection_claims(totals):
     rejected = totals["rejects"]
     followed = totals["rejects_followed_by_seat_commit"]
@@ -240,6 +280,11 @@ def usage_claim(total_tok, total_cost):
     )
 
 
+def href(value):
+    """A clickable target for a displayed address; bare host paths get https."""
+    return value if value.startswith(("http://", "https://")) else "https://" + value
+
+
 def slide(headline, body, cls="", kicker=""):
     k = f'<div class="kicker">{esc(kicker)}</div>' if kicker else ""
     return f'<section class="slide {cls}">{k}<h1>{esc(headline)}</h1><div class="body">{body}</div></section>'
@@ -255,9 +300,11 @@ def build(floor, sessions_path, facts, draft):
     stages = facts["stage_claims"]
     followed, followed_label, rejection_headline = rejection_claims(T)
     slides = []
+    hook = facts.get("hook_quote")
     slides.append(slide(
         "The builder never grades its own work.",
-        f'<p class="lead">{esc(title_claim(facts, T))}</p>'
+        (f'<p class="hook">"{esc(hook)}" <span>{esc(facts.get("hook_source", ""))}</span></p>' if hook else "")
+        + f'<p class="lead">{esc(title_claim(facts, T))}</p>'
         f'<div class="bignums"><div><b>{len(stages)}/4</b><span>stages reached</span></div>'
         f'<div><b>{T["human_messages_after_dispatch"]}</b><span>human messages after dispatch</span></div>'
         f'<div><b>{followed}</b><span>{esc(followed_label)}</span></div></div>'
@@ -268,12 +315,18 @@ def build(floor, sessions_path, facts, draft):
         f'<div class="seats">{seats}</div><p class="note">Writers implement. The modeler and gatekeeper '
         'test independently. The auditor supplies a third reading without touching product code.</p>'))
     slides.append(slide(
-        "The spec is built twice, by two model families, and the two builds must agree.",
+        "The spec is built twice by two model families, and a third family audits the reading.",
         flow_svg()))
+    moment = room_moment_slide(facts)
+    if moment:
+        slides.append(moment)
     slides.append(caught_slide(floor))
     slides.append(slide(
         rejection_headline,
         timeline(floor)))
+    team = teamwork_slide(floor, fam)
+    if team:
+        slides.append(team)
     slides.append(slide(
         f"Each folder claims its own stage in the organizers' isolated run.",
         '<div class="bignums">' + "".join(f'<div><b>{esc(s)}</b><span>stage {i + 1}: {esc(v)}</span></div>'
@@ -281,11 +334,12 @@ def build(floor, sessions_path, facts, draft):
     app_slide = optional_app_slide(facts)
     if app_slide:
         slides.append(app_slide)
-    slides.append(slide(
-        facts["holdout_headline"],
-        f'<div class="bignums"><div><b>{esc(facts["holdout_score"])}</b><span>hidden attacks passed</span></div>'
-        f'<div><b class="mono">{esc(facts["holdout_digest"][:12])}</b><span>digest committed before dispatch</span></div></div>'
-        + art("sealed-envelope", "corner")))
+    if facts.get("holdout_applicable", True):
+        slides.append(slide(
+            facts["holdout_headline"],
+            f'<div class="bignums"><div><b>{esc(facts["holdout_score"])}</b><span>hidden attacks passed</span></div>'
+            f'<div><b class="mono">{esc(facts["holdout_digest"][:12])}</b><span>digest committed before dispatch</span></div></div>'
+            + art("sealed-envelope", "corner")))
     if facts.get("genericity"):
         slides.append(slide(
             "The same frozen factory was tested on a second track.",
@@ -305,9 +359,16 @@ def build(floor, sessions_path, facts, draft):
         slides.append(slide(
             "What it does not do yet.",
             '<ul class="limits">' + "".join(f"<li>{esc(x)}</li>" for x in facts["limits"]) + "</ul>"))
+    links = "".join(
+        f'<a class="link" href="{esc(href(facts[key]))}"><span>{esc(label)}</span><b>{esc(facts[key])}</b></a>'
+        for key, label in (("live_url", "Live app"), ("floor_url", "Factory Floor replay"), ("repo_url", "Repository"))
+        if facts.get(key))
+    close = facts.get("close_line")
     slides.append(slide(
         "Check every number yourself.",
-        '<ul class="check">' + "".join(f"<li><code>{esc(c)}</code></li>" for c in facts["check_commands"]) + "</ul>"))
+        (f'<div class="links">{links}</div>' if links else "")
+        + '<ul class="check">' + "".join(f"<li><code>{esc(c)}</code></li>" for c in facts["check_commands"]) + "</ul>"
+        + (f'<p class="closeline">{esc(close)}</p>' if close else ""), "close"))
     stamp = f'<div class="draft">{esc(draft)}</div>' if draft else ""
     return (PAGE_HEAD + "".join(s.replace("</section>", stamp + "</section>") for s in slides) + "</body></html>")
 
@@ -321,7 +382,7 @@ body {{ margin: 0; background: {PAGE}; font-family: Figtree, sans-serif; color: 
 .slide {{ width: 1920px; height: 1080px; padding: 110px 140px; position: relative; page-break-after: always; overflow: hidden; background: {PAGE}; }}
 .slide.title {{ background: {SUN}; }}
 h1 {{ font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 76px; line-height: 1.08; color: {INK}; margin: 0 0 60px; max-width: 1560px; }}
-.kicker {{ font-weight: 700; color: {HOT}; font-size: 30px; margin-bottom: 18px; }}
+.kicker {{ font-weight: 700; color: {HOT_TEXT}; font-size: 30px; margin-bottom: 18px; }}
 .lead {{ font-size: 40px; line-height: 1.35; max-width: 1400px; color: {INK}; }}
 .note {{ font-size: 28px; color: #4a4560; max-width: 1400px; }}
 .url {{ position: absolute; bottom: 90px; font-size: 34px; font-weight: 700; color: {INK}; }}
@@ -356,7 +417,24 @@ svg .bs {{ font: 600 26px Figtree, sans-serif; fill: #3a3550; }}
 .card .id {{ font-family: 'JetBrains Mono', monospace; font-size: 22px; color: #6a6480; }}
 .arrowbig {{ font-size: 110px; color: {INK}; align-self: center; }}
 .limits {{ font-size: 36px; line-height: 1.6; max-width: 1500px; }}
-.draft {{ position: absolute; right: 60px; top: 40px; background: {HOT}; color: #fff; font-weight: 800; font-size: 26px; padding: 10px 22px; border-radius: 999px; }}
+.hook {{ font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 46px; line-height: 1.2; color: {INK}; background: #fff; border-left: 14px solid {HOT}; padding: 26px 36px; margin: -20px 0 40px; max-width: 1500px; }}
+.hook span {{ display: block; font: 600 24px Figtree, sans-serif; color: #4a4560; margin-top: 10px; }}
+.slide.close {{ background: {INK}; }}
+.slide.close h1, .slide.close .closeline {{ color: #fff; }}
+.slide.close .check {{ color: #fff; }}
+.slide.close code {{ color: {BODY}; }}
+.slide.title .bignums {{ max-width: 1250px; flex-wrap: nowrap; gap: 36px; }}
+.slide.title .bignums div {{ flex: 1; min-width: 0; padding: 30px 36px; }}
+.slide.title .bignums span {{ display: block; line-height: 1.25; }}
+.links {{ display: flex; gap: 28px; flex-wrap: wrap; margin-bottom: 40px; }}
+.link {{ display: block; text-decoration: none; background: {SUN}; border-radius: 22px; padding: 22px 32px; }}
+.link span {{ display: block; font-weight: 700; font-size: 24px; color: {INK}; }}
+.link b {{ font-family: 'JetBrains Mono', monospace; font-size: 30px; color: {BODY}; }}
+.closeline {{ font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 54px; position: absolute; bottom: 100px; max-width: 1600px; margin: 0; }}
+.appduo {{ display: flex; gap: 48px; align-items: flex-end; justify-content: center; }}
+.appduo img.appshot {{ max-width: 1180px; margin: 0; }}
+img.phoneshot {{ max-height: 670px; width: auto; border: 4px solid {INK}; border-radius: 36px; box-shadow: 16px 18px 0 {AQUA}; }}
+.draft {{ position: absolute; right: 60px; top: 40px; background: {HOT_TEXT}; color: #fff; font-weight: 800; font-size: 26px; padding: 10px 22px; border-radius: 999px; }}
 </style></head><body>"""
 
 
