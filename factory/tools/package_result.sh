@@ -2,6 +2,7 @@
 # Package measured evidence outside stage folders. The band remains the only writer of stage code.
 # package_result.sh <result-repo> <room.json> <usage-sessions.json> <facts.json> <claim-evidence.json>
 set -euo pipefail
+export PYTHONDONTWRITEBYTECODE=1  # the checks import each other; never write caches into the result
 
 [ "$#" = 5 ] || { echo "usage: package_result.sh <result-repo> <room.json> <usage-sessions.json> <facts.json> <claim-evidence.json>" >&2; exit 2; }
 RESULT=$(cd "$1" && pwd)
