@@ -56,14 +56,15 @@ python3 "$RESULT/tools/check_claim_evidence.py" \
   "$RESULT/room.json" "$RESULT/evidence/claim-evidence.json"
 python3 "$RESULT/tools/floor_data.py" \
   "$RESULT/room.json" "$RESULT" "$RESULT/evidence/floor.json"
-python3 "$RESULT/tools/result_readme.py" \
-  "$RESULT/evidence/floor.json" "$RESULT/evidence/facts.json" > "$RESULT/README.md"
 python3 "$RESULT/tools/factory_md.py" \
   --repo "$RESULT" --room "$RESULT/room.json" \
   --floor "$RESULT/evidence/floor.json" \
   --sessions "$RESULT/evidence/usage-sessions.json" \
   --facts "$RESULT/evidence/facts.json" \
   --template "$RESULT/docs/FACTORY.template.md" > "$RESULT/FACTORY.md"
+# The README leads with the same case study as FACTORY.md, copied from it so they cannot diverge.
+python3 "$RESULT/tools/result_readme.py" \
+  "$RESULT/evidence/floor.json" "$RESULT/evidence/facts.json" "$RESULT/FACTORY.md" > "$RESULT/README.md"
 python3 "$RESULT/tools/judge_guide.py" \
   "$RESULT/evidence/floor.json" "$RESULT/evidence/facts.json" > "$RESULT/JUDGE-GUIDE.md"
 # Every number on these surfaces is generated from the evidence files by the generators above, which

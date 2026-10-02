@@ -147,6 +147,9 @@ with tempfile.TemporaryDirectory() as tmp:
         stage_hashes == after
         and not any(path.startswith("stage-") for path in staged)
         and "Stages reached: 4 of 4" in readme
+        and "## Case study at a glance" in readme
+        and readme.split("## Case study at a glance", 1)[1].split("\n## ", 1)[0]
+            == (repo / "FACTORY.md").read_text().split("## Case study at a glance", 1)[1].split("\n## ", 1)[0]
         and "Human messages after dispatch: 0" in readme
         and (repo / "evidence" / "claim-evidence.json").is_file()
         and not (repo / "evidence" / "public-claims.json").exists()
