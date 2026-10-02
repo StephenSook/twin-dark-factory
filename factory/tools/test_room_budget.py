@@ -540,6 +540,15 @@ def run_judge_guide_checks():
             print(f"BAD  judge guide accepted {label}")
 
 
+def room_gate_accepts(content):
+    """The ACCEPT revisions check_room.py reads from one gatekeeper message."""
+    spec = importlib.util.spec_from_file_location("check_room_rule", FLOOR_DATA.with_name("check_room.py"))
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+    head = gate.ACCEPT.match(gate.LEAD.sub("", content, count=1))
+    return [head.group(1)] if head else []
+
+
 def run_rejection_timing_checks():
     """A writer commit made before a REJECT is not its follow-up; the later accepted revision still resolves it."""
     spec = importlib.util.spec_from_file_location("floor_data_timing", FLOOR_DATA)
@@ -625,6 +634,11 @@ def run_rejection_timing_checks():
         and tools.message_verdicts("gatekeeper", "text", "> REJECT ccccccc quoted") == []
         and tools.message_verdicts("gatekeeper", "error", "REJECT deadbee transport failed") == []
         and tools.message_verdicts("builder", "text", "REJECT ccccccc relayed") == []
+        and tools.message_verdicts("gatekeeper", "text", "---\nREJECT ccccccc stale") == []
+        and tools.message_verdicts("gatekeeper", "text", "@[[" + "a" * 8 + "-0000-4000-8000-" + "a" * 12 + "]] **REJECT ccccccc** fresh") == [
+            {"verdict": "REJECT", "rev": "ccccccc"}]
+        and room_gate_accepts("Prior verdict follows:\nACCEPT abcdef1") == []
+        and room_gate_accepts("@[[" + "a" * 8 + "-0000-4000-8000-" + "a" * 12 + "]] ACCEPT abcdef1 stage 1") == ["abcdef1"]
         and (linear_counted["resolved_by"] or {}).get("rev") == "6666666"
         and log_order["followup"]["sha"] == "b2" * 20
         and partial["resolved_by"] is None
