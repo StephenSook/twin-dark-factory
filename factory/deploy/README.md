@@ -24,3 +24,14 @@ docker run --rm -p 10000:10000 demo
 
 The `demo-image` workflow does the same in CI, smoke tests it, and publishes the image to the GitHub
 container registry for the host to pull.
+
+Host on Render's free plan (the judged demo runs here):
+
+- New web service from this public repository, runtime Docker, Dockerfile path
+  `deploy/render.Dockerfile`, build context `deploy`, health check `/health`, one instance,
+  auto-deploy off.
+- Service variable `DEMO_IMAGE` set to the immutable tag the `demo-image` workflow published for
+  the commit being deployed (`ghcr.io/<owner>/<repo>-demo:<first 12 characters of the commit>`).
+  Render passes service variables to Docker builds as build arguments.
+- A free instance sleeps after about 15 idle minutes. The first request after that takes about a
+  minute while it starts, and the front door reseeds the demo accounts on start.

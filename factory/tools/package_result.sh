@@ -44,7 +44,7 @@ copy_file "$FACTORY/docs/FACTORY.template.md" "$RESULT/docs/FACTORY.template.md"
 for name in index.html style.css app.js; do
   copy_file "$FACTORY/floor/$name" "$RESULT/floor/$name"
 done
-for name in Dockerfile README.md proxy.py seed.json; do
+for name in Dockerfile render.Dockerfile README.md proxy.py seed.json; do
   copy_file "$FACTORY/deploy/$name" "$RESULT/deploy/$name"
 done
 copy_file "$FACTORY/result-ci/verify.yml" "$RESULT/.github/workflows/verify.yml"
