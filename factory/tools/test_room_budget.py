@@ -2,6 +2,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -281,7 +282,7 @@ def run_judge_guide_checks():
     floor = {
         "events": [
             {"from": "gatekeeper", "human": False, "t": 1, "id": "reject-id",
-             "preview": "REJECT ccccccc failing burst", "verdicts": [{"verdict": "REJECT", "rev": "ccccccc"}]},
+             "preview": "REJECT ccccccc failing burst", "verdicts": [{"verdict": "REJECT", "rev": "ccccccc", "rev_full": "ccccccc"}]},
             {"from": "gatekeeper", "human": False, "t": 2, "id": "accept-id",
              "preview": "ACCEPT ddddddd", "verdicts": [{"verdict": "ACCEPT", "rev": "ddddddd"}]},
             {"from": "coordinator-cx", "human": False, "t": 3, "id": "final-id",
@@ -628,7 +629,7 @@ def run_rejection_timing_checks():
         and early["fixed_before_reject"] is True
         and late["fixed_before_reject"] is False
         and tools.message_verdicts("gatekeeper", "text", "ACCEPT aaaaaaa\n\n> REJECT ccccccc old") == [
-            {"verdict": "ACCEPT", "rev": "aaaaaaa"}]
+            {"verdict": "ACCEPT", "rev": "aaaaaaa", "rev_full": "aaaaaaa"}]
         and tools.message_verdicts("gatekeeper", "text", "Prior verdict follows:\nREJECT ccccccc stale") == []
         and tools.message_verdicts("gatekeeper", "text", "```\nREJECT ccccccc\n```") == []
         and tools.message_verdicts("gatekeeper", "text", "> REJECT ccccccc quoted") == []
@@ -637,7 +638,7 @@ def run_rejection_timing_checks():
         and tools.message_verdicts("gatekeeper", "text", "REJECT ccccccc: example", is_agent=False) == []
         and tools.message_verdicts("gatekeeper", "text", "---\nREJECT ccccccc stale") == []
         and tools.message_verdicts("gatekeeper", "text", "@[[" + "a" * 8 + "-0000-4000-8000-" + "a" * 12 + "]] **REJECT ccccccc** fresh") == [
-            {"verdict": "REJECT", "rev": "ccccccc"}]
+            {"verdict": "REJECT", "rev": "ccccccc", "rev_full": "ccccccc"}]
         and room_gate_accepts("Prior verdict follows:\nACCEPT abcdef1") == []
         and room_gate_accepts("ACCEPT\nabcdef1 is a second-line hash") == []
         and room_gate_accepts("ACCEPTabcdef1 glued") == []
@@ -649,11 +650,11 @@ def run_rejection_timing_checks():
         and room_gate_accepts("ACCEPT `abcdef1 stage 2") == []
         and tools.message_verdicts("gatekeeper", "text", "REJECT `ccccccc`\u00e9chec") == []
         and tools.message_verdicts("gatekeeper", "text", "`REJECT` `ccccccc`: reason") == [
-            {"verdict": "REJECT", "rev": "ccccccc"}]
+            {"verdict": "REJECT", "rev": "ccccccc", "rev_full": "ccccccc"}]
         and tools.message_verdicts("gatekeeper", "text", "REJECTccccccc glued") == []
         and tools.message_verdicts("gatekeeper", "text", "REJECT ccccccczz trailing") == []
         and tools.message_verdicts("gatekeeper", "text", "REJECT `ccccccc`: reason") == [
-            {"verdict": "REJECT", "rev": "ccccccc"}]
+            {"verdict": "REJECT", "rev": "ccccccc", "rev_full": "ccccccc"}]
         and tools.message_verdicts("gatekeeper", "text", "REJECT\nccccccc second line") == []
         and room_gate_accepts("@[[" + "a" * 8 + "-0000-4000-8000-" + "a" * 12 + "]] ACCEPT abcdef1 stage 1") == ["abcdef1"]
         and (linear_counted["resolved_by"] or {}).get("rev") == "6666666"
@@ -705,6 +706,63 @@ def run_saved_log_ancestry_check():
     else:
         failures.append("saved log ancestry")
         print("BAD  saved log credited an unproven commit", result.stderr[-300:], record)
+
+
+def run_floor_dedup_and_tie_checks():
+    """Verdicts de-duplicate by commit, and equal timestamps keep export order, through the CLI."""
+    def room_with(contents, same_time=False):
+        msgs = [message(1, "text", "Human", "human", "dispatch")]
+        for i, content in enumerate(contents, 2):
+            msgs.append(message(i, "text", sender="stephensookra/gatekeeper", content=content))
+        for i, item in enumerate(msgs):
+            item["insertedAt"] = "2026-01-01T00:00:05.000Z" if same_time and i else f"2026-01-01T00:00:0{i}.000Z"
+        return export(msgs)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        a1, a2, b1 = "abcdef1" + "0" * 33, "abcdef1" + "f" * 33, "1234567" + "a" * 33
+        log = tmp / "commits.log"
+        log.write_text(
+            f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\nmandates/builder.md\n"
+            f"{a1}\x1fbuilder\x1f2026-01-01T00:00:00+00:00\x1fone\nstage-1/a.py\n"
+            f"{a2}\x1fbuilder\x1f2026-01-01T00:00:00+00:00\x1ftwo\nstage-1/b.py\n"
+            f"{b1}\x1fbuilder\x1f2026-01-01T00:00:00+00:00\x1fthree\nstage-2/a.py\n")
+        def run(room, repo):
+            (tmp / "room.json").write_text(json.dumps(room))
+            out = tmp / "floor.json"
+            done = subprocess.run([sys.executable, str(FLOOR_DATA), str(tmp / "room.json"), str(repo), str(out)],
+                                  capture_output=True, text=True)
+            return json.loads(out.read_text()) if done.returncode == 0 else {"error": done.stderr[-300:]}
+        distinct = run(room_with([f"REJECT {a1} first", f"REJECT {a2} second"]), log)
+        same = run(room_with([f"REJECT {b1[:7]} short", f"REJECT {b1} full"]), log)
+        repo = tmp / "repo"
+        git = lambda *args, when="2026-01-01T00:00:01+00:00": subprocess.run(
+            ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True,
+            env={**os.environ, "GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when,
+                 "GIT_AUTHOR_NAME": "builder", "GIT_AUTHOR_EMAIL": "b@x", "GIT_COMMITTER_NAME": "builder",
+                 "GIT_COMMITTER_EMAIL": "b@x"})
+        repo.mkdir()
+        git("init", "-q", "-b", "main")
+        (repo / "mandates").mkdir()
+        (repo / "mandates" / "builder.md").write_text("builder\n")
+        (repo / "stage-1").mkdir()
+        (repo / "stage-1" / "a.py").write_text("1\n")
+        git("add", "-A")
+        git("commit", "-q", "-m", "rejected")
+        rejected = git("rev-parse", "HEAD").stdout.strip()
+        (repo / "stage-1" / "a.py").write_text("2\n")
+        git("commit", "-q", "-am", "fixed", when="2026-01-01T00:00:02+00:00")
+        fixed = git("rev-parse", "HEAD").stdout.strip()
+        tie = run(room_with([f"REJECT {rejected[:7]} bad", f"ACCEPT {fixed[:7]} good"], same_time=True), repo)
+    good = (
+        (distinct.get("totals") or {}).get("rejects") == 2
+        and (same.get("totals") or {}).get("rejects") == 1
+        and ((tie.get("rejections") or [{}])[0].get("resolved_by") or {}).get("rev") == fixed[:7]
+    )
+    if good:
+        print("ok   verdicts de-duplicate by commit and equal timestamps keep export order")
+    else:
+        failures.append("floor dedup and tie")
+        print("BAD  floor dedup or tie order", distinct.get("totals"), same.get("totals"), tie.get("rejections"), tie.get("error"))
 
 
 def run_floor_verdict_checks():
@@ -1067,6 +1125,7 @@ run_factory_md_checks()
 run_floor_verdict_checks()
 run_rejection_timing_checks()
 run_saved_log_ancestry_check()
+run_floor_dedup_and_tie_checks()
 run_floor_dispatch_time_check()
 run_declared_seat_check()
 run_judge_guide_checks()

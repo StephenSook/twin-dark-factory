@@ -34,7 +34,8 @@ def message_verdicts(who, kind, body, is_agent=True):
     head = VERDICT.match(LEAD.sub("", body, count=1))
     if not head:
         return []
-    return [{"verdict": head["w1"] or head["w2"], "rev": (head["r1"] or head["r2"])[:7]}]
+    full = head["r1"] or head["r2"]
+    return [{"verdict": head["w1"] or head["w2"], "rev": full[:7], "rev_full": full}]
 
 
 def ts(s: str) -> float:
@@ -174,7 +175,7 @@ def rejection_record(commits, accepts, reject_t, revision, message_id, between=N
         return commit.get("t_exact", commit["t"])
 
     matches = [index for index, commit in enumerate(commits) if commit["sha"].startswith(revision)]
-    record = {"rev": revision, "t": round(reject_t, 1), "message_id": message_id, "stages": [],
+    record = {"rev": revision[:7], "t": round(reject_t, 1), "message_id": message_id, "stages": [],
               "followup": None, "resolved_by": None, "fixed_before_reject": False}
     if len(matches) != 1:
         return record
@@ -204,7 +205,7 @@ def rejection_record(commits, accepts, reject_t, revision, message_id, between=N
             if c["by_seat"] and c["author"] in ("builder", "surface"):
                 covered.update(c["stages"])
         if stages.issubset(covered):
-            record["resolved_by"] = {"rev": accept_rev, "t": round(accept_t, 1), "message_id": accept_id}
+            record["resolved_by"] = {"rev": accept_rev[:7], "t": round(accept_t, 1), "message_id": accept_id}
             fixes = [c for c in contained if c["by_seat"] and c["author"] in ("builder", "surface")
                      and stages.intersection(c["stages"])]
             # Provably earlier only when the whole Git second ends before the REJECT.
@@ -232,6 +233,7 @@ def main():
 
     events, per_seat = [], {n: {"text": 0, "tool_call": 0, "thought": 0, "error": 0} for n in seats.values()}
     exact_t = {}  # unrounded message times for ordering; events publish them rounded
+    full_revs = {}  # each event's revisions exactly as posted, for de-duplication by commit
     retries = failed = 0
     for m in msgs:
         kind = m["messageType"]
@@ -249,10 +251,14 @@ def main():
         # Only the gatekeeper can make an authoritative acceptance decision. Other seats use
         # ACCEPT and REJECT while reporting model checks or relaying a verdict, and counting
         # those messages would invent extra stage boundaries in FACTORY.md and the deck.
-        verdicts = message_verdicts(who, kind, body, m.get("senderType") == "Agent")
-        exact_t[m["id"]] = ts(m["insertedAt"]) - t0
+        found = message_verdicts(who, kind, body, m.get("senderType") == "Agent")
+        full_revs[m["id"]] = [v.pop("rev_full") for v in found]
+        verdicts = found
+        # Export order breaks ties between equal timestamps; the offset stays far below 1 ms.
+        relative = ts(m["insertedAt"]) - t0
+        exact_t[m["id"]] = relative + len(exact_t) * 1e-8
         events.append({
-            "id": m["id"], "t": round(exact_t[m["id"]], 1), "from": who,
+            "id": m["id"], "t": round(relative, 1), "from": who,
             "human": m["senderId"] in humans, "kind": kind, "to": sorted(set(to)),
             "chars": len(body), "verdicts": verdicts,
             "preview": MENTION.sub(lambda x: "@" + names.get(x.group(1), "?"), body)[:220],
@@ -274,17 +280,21 @@ def main():
         for s in c["stages"]:
             if c["by_seat"]:
                 stage_first.setdefault(s, c["t"])
-    # One decision per (verdict, revision): the same verdict sent to two seats counts once.
+    # One decision per (verdict, commit): the same verdict sent to two seats, or naming one commit by
+    # a short and a full hash, counts once; two commits that share a short prefix stay distinct.
+    def commit_key(rev):
+        hits = [c["sha"] for c in commits if c["sha"].startswith(rev)]
+        return hits[0] if len(hits) == 1 else rev
     first = {}
     for e in events:
-        for v in e["verdicts"]:
-            first.setdefault((v["verdict"], v["rev"]), (e["t"], e["id"]))
+        for v, full in zip(e["verdicts"], full_revs.get(e["id"], [])):
+            first.setdefault((v["verdict"], commit_key(full)), (e["t"], e["id"]))
     accepts = [(t, rev) for (vd, rev), (t, _) in first.items() if vd == "ACCEPT"]
     rejects = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "REJECT"]
     accepts_with_ids = [(exact_t[mid], rev, mid) for (vd, rev), (_t, mid) in first.items() if vd == "ACCEPT"]
     def between(rejected_index, accepted_index):
-        """A saved log carries no ancestry, so only the accepted commit itself is known to be in it."""
-        return [commits[accepted_index]]
+        """A saved log carries no ancestry, so no accepted revision can be proven to contain a fix."""
+        return []
     if not repo.is_file():
         def between(rejected_index, accepted_index):
             """Commits the accepted revision contains since the rejected one, by Git ancestry."""
