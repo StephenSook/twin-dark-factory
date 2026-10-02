@@ -75,3 +75,8 @@ code { font: 14px ui-monospace, monospace; background: var(--card); padding: 2px
 .foot { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 24px; background: var(--indigo); color: #fff; }
 .foot a { color: #fff; font-weight: 700; }
 @media (prefers-reduced-motion: reduce) { .pill, .stat { transition: none; transform: none !important; } }
+@media (max-width: 600px) {
+  .stages { height: auto; border-top: none; display: grid; gap: 10px; }
+  .stage-mark { position: static; transform: none; display: flex; align-items: center; gap: 10px; text-align: left; white-space: normal; }
+  .stage-mark::before { margin: 0; flex: none; }
+}
