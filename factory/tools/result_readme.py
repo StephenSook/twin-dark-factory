@@ -41,8 +41,8 @@ def build(floor, facts):
     if try_it:
         lines.extend(["## Try it", "", *try_it, ""])
     if facts.get("holdout_applicable", True):
-        holdout_line = (f"- Sealed holdout: {need(facts, 'holdout_score')}, "
-                        f"digest `{str(need(facts, 'holdout_digest'))[:16]}`")
+        holdout_line = (f"- Sealed holdout the band never saw: {need(facts, 'holdout_score')} attacks passed, "
+                        f"digest `{str(need(facts, 'holdout_digest'))[:16]}` committed before the dispatch")
     else:
         holdout_line = f"- Sealed holdout: {need(facts, 'holdout_note')}"
     lines.extend([
@@ -52,7 +52,13 @@ def build(floor, facts):
         f"- Time from dispatch: {duration(floor.get('duration_s') or 0)}",
         f"- Human messages after dispatch: {totals.get('human_messages_after_dispatch', 0)}",
         f"- Gatekeeper verdicts: {totals.get('rejects', 0)} REJECT and {totals.get('accepts', 0)} ACCEPT",
-        f"- Room messages: {floor.get('generated_from', {}).get('messages', 0)} of 10,000",
+        f"- Rejections followed by a same-stage commit from a writer seat: "
+        f"{totals.get('rejects_followed_by_seat_commit', 0)} of {totals.get('rejects', 0)}",
+        f"- Commits made by seats: {totals.get('seat_commits', 0)} of {totals.get('commits', 0)}",
+        f"- Handoffs between seats: {totals.get('handoffs', 0):,}",
+        f"- BAND messages retried or undelivered: "
+        f"{totals.get('delivery_retries', 0) + totals.get('delivery_failures', 0)}",
+        f"- Room messages: {floor.get('generated_from', {}).get('messages', 0):,} of 10,000",
         holdout_line,
         "",
         "## Independent checks",
