@@ -92,6 +92,9 @@ else
   echo "refusing: packaging staged a stage folder" >&2
   exit 1
 fi
+# floor, deploy and tools are staged as folders, so anything a local run left in them would ship.
+stray=$(git -C "$RESULT" diff --cached --name-only | grep -E '(^|/)__pycache__/|\.py[co]$|(^|/)\.DS_Store$' || true)
+[ -z "$stray" ] || { echo "refusing: packaging staged generated files: $stray" >&2; exit 1; }
 
 echo "PASS  packaged measured result evidence without touching stage folders"
 echo "INFO  inspect the staged files, then commit them as the human owner"

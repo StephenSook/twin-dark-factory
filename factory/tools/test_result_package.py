@@ -116,6 +116,18 @@ with tempfile.TemporaryDirectory() as tmp:
         raise SystemExit("a pending value reached the packaged copy")
     subprocess.run(["git", "-C", str(repo), "reset", "-q"], check=True)
     facts_path.write_text(json.dumps(facts))
+    # A local run that imports the proxy leaves a bytecode cache in the folder that ships.
+    stray = repo / "deploy" / "__pycache__" / "proxy.cpython-312.pyc"
+    stray.parent.mkdir(parents=True, exist_ok=True)
+    stray.write_bytes(b"\x00")
+    cached = subprocess.run(package_command, capture_output=True, text=True)
+    if cached.returncode == 0 or "staged generated files" not in cached.stderr:
+        print(cached.stdout)
+        print(cached.stderr)
+        raise SystemExit("a stray bytecode cache was packaged")
+    subprocess.run(["git", "-C", str(repo), "reset", "-q"], check=True)
+    stray.unlink()
+    stray.parent.rmdir()
     result = subprocess.run(package_command, capture_output=True, text=True)
     if result.returncode != 0:
         print(result.stdout)
