@@ -171,6 +171,51 @@ def costs(sessions_path, room, facts, draft, development):
     return "\n".join(out)
 
 
+def mandate_models(repo):
+    """(seat, harness, model) from each committed mandate's header lines."""
+    out = []
+    for f in sorted((repo / "mandates").glob("*.md")):
+        head = f.read_text().splitlines()[:3]
+        harness = next((l.split(":", 1)[1].strip() for l in head if l.startswith("Harness:")), "?")
+        model = next((l.split(":", 1)[1].strip() for l in head if l.startswith("Model:")), "?")
+        out.append((f.stem, harness, model))
+    return out
+
+
+def family(model):
+    m = model.lower()
+    for key, name in (("claude", "Claude"), ("gpt", "GPT"), ("deepseek", "DeepSeek"), ("qwen", "Qwen"), ("glm", "GLM")):
+        if key in m:
+            return name
+    return model
+
+
+def case_study(repo, track, claims, holdout_line, sessions_path, room, limits, T):
+    """The judges' case-study outline, in their order, from the same inputs as the rest of the page."""
+    seats = mandate_models(repo)
+    families = sorted({family(model) for _, _, model in seats})
+    usage = [s for s in json.load(open(sessions_path))["sessions"]
+             if room in ((s.get("attribution") or {}).get("chatIds") or [(s.get("attribution") or {}).get("chatId")])]
+    usd = sum(s.get("totalCost") or 0.0 for s in usage)
+    tok = sum(sum(s.get(k) or 0 for k in ("inputTokens", "outputTokens", "cacheCreationTokens", "cacheReadTokens"))
+              for s in usage)
+    reached = (", ".join(f"stage {k} {v}" for k, v in claims.items()) if isinstance(claims, dict) else str(claims))
+    lines = [
+        f"- **Task.** The {track} track: four cumulative stages from one dispatch in a fresh BAND room.",
+        f"- **Band.** {len(seats)} seats on {len(families)} model families ({', '.join(families)}): "
+        + ", ".join(f"{seat} ({harness})" for seat, harness, _ in seats) + ".",
+        "- **Key design decision.** A seat on a different model family writes an executable model of the "
+        "written requirements without reading product code, and the gatekeeper accepts a revision only when "
+        "product and model agree.",
+        f"- **Verified result.** {reached}; {T['rejects']} rejections and {T['accepts']} acceptances over "
+        f"{T['handoffs']:,} handoffs." + (f" {holdout_line}" if holdout_line else ""),
+        f"- **Cost.** BAND attributes {tok:,} tokens and ${usd:,.2f} of list-price equivalent to this room "
+        "(an estimate, not a bill); see Measured cost and time.",
+        f"- **Limitation.** {limits[0]}" if limits else "- **Limitation.** NOT MEASURED YET",
+    ]
+    return "\n".join(lines)
+
+
 def main():
     ap = argparse.ArgumentParser()
     for a in ("--repo", "--room", "--floor", "--sessions", "--facts"):
@@ -242,7 +287,10 @@ def main():
         f"- **Generic.** {generic if isinstance(generic, str) else json.dumps(generic)}",
         f"- **One agent against the band.** {baseline if isinstance(baseline, str) else json.dumps(baseline)}",
     ]
+    limits_list = need(facts, "limits", a.draft) or []
+    holdout_line = (f"Sealed holdout: {holdout}." if holdout_applicable else "")
     fill = {
+        "{{CASE_STUDY}}": case_study(repo, track, claims, holdout_line, a.sessions, room, limits_list, T),
         "{{SEATS_TABLE}}": seats_table(repo),
         "{{MANDATE_HASHES}}": hashes(repo),
         "{{CATCH_STATS}}": (f"{T['rejects']} rejections and {T['accepts']} acceptances over {T['handoffs']} handoffs; "

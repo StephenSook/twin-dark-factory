@@ -5,6 +5,10 @@ families, built and checked one stage folder at a time from a single dispatch.
 Every number on this page is generated from files in this repository by
 `tools/factory_md.py`; rerun it to check.
 
+## Case study at a glance
+
+{{CASE_STUDY}}
+
 ## Seats
 
 {{SEATS_TABLE}}
