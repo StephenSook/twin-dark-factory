@@ -639,6 +639,12 @@ def run_rejection_timing_checks():
             {"verdict": "REJECT", "rev": "ccccccc"}]
         and room_gate_accepts("Prior verdict follows:\nACCEPT abcdef1") == []
         and room_gate_accepts("ACCEPT\nabcdef1 is a second-line hash") == []
+        and room_gate_accepts("ACCEPTabcdef1 glued") == []
+        and room_gate_accepts("ACCEPT abcdef1garbage") == []
+        and tools.message_verdicts("gatekeeper", "text", "REJECTccccccc glued") == []
+        and tools.message_verdicts("gatekeeper", "text", "REJECT ccccccczz trailing") == []
+        and tools.message_verdicts("gatekeeper", "text", "REJECT `ccccccc`: reason") == [
+            {"verdict": "REJECT", "rev": "ccccccc"}]
         and tools.message_verdicts("gatekeeper", "text", "REJECT\nccccccc second line") == []
         and room_gate_accepts("@[[" + "a" * 8 + "-0000-4000-8000-" + "a" * 12 + "]] ACCEPT abcdef1 stage 1") == ["abcdef1"]
         and (linear_counted["resolved_by"] or {}).get("rev") == "6666666"

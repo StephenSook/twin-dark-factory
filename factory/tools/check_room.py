@@ -34,7 +34,7 @@ ROOM_COUNT = re.compile(
 # The same rule as tools/floor_data.py: a verdict is what a gatekeeper text message starts with,
 # after any @mentions and Markdown emphasis on its first line. A quoted or later ACCEPT never counts.
 LEAD = re.compile(r"^(?:[ \t]*@\[\[[0-9a-f-]{36}\]\])*[ \t*_#-]*")
-ACCEPT = re.compile(r"^`?ACCEPT`?[ \t]*`?([0-9a-f]{7,40})\b")
+ACCEPT = re.compile(r"^`?ACCEPT`?[ \t]+`?([0-9a-f]{7,40})`?(?![0-9A-Za-z_])")
 
 
 def main():
