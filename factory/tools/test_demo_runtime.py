@@ -81,7 +81,8 @@ class FakeService(http.server.BaseHTTPRequestHandler):
         data = json.dumps({"service": self.path}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
+        if self.path != "/nolen":
+            self.send_header("Content-Length", str(len(data)))
         self.end_headers()
 
     do_GET = do_POST = answer
@@ -135,6 +136,8 @@ for label, first in (
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: \xb2\r\n\r\nx"),
     ("a Content-Length with a vertical tab the edge may not honour",
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: \x0b4\r\n\r\n" + smuggled),
+    ("a matrix-parameter route to the test endpoints",
+     b"POST /_test;x=1/reset HTTP/1.1\r\nHost: demo\r\nContent-Length: 2\r\n\r\n{}"),
     ("a Content-Length too long to convert",
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: " + b"9" * 5000 + b"\r\n\r\n"),
 ):
@@ -148,6 +151,10 @@ check("a HEAD reply from the proxy carries no body", data.endswith(b"\r\n\r\n") 
 data = exchange(b"HEAD /me HTTP/1.1\r\nHost: demo\r\nConnection: close\r\n\r\n")
 check("a forwarded HEAD keeps the service's length and sends no body",
       b"Content-Length: 18" in data and data.endswith(b"\r\n\r\n"))
+
+data = exchange(b"HEAD /nolen HTTP/1.1\r\nHost: demo\r\nConnection: close\r\n\r\n")
+check("a forwarded HEAD without a service length sends no invented length", b"Content-Length" not in data
+      and data.startswith(b"HTTP/1.1 200"))
 
 data = exchange(b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: 2\r\n\r\n{}"
                 b"GET /health HTTP/1.1\r\nHost: demo\r\nConnection: close\r\n\r\n")

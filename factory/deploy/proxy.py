@@ -78,7 +78,7 @@ def canonical(raw):
         if decoded == path:
             break
         path = decoded
-    if "%" in path or "\\" in path or any(ord(c) < 32 for c in path):
+    if "%" in path or "\\" in path or ";" in path or any(ord(c) < 32 for c in path):
         return None  # a backslash can also arrive nested-encoded (%255C), so check after decoding
     trailing = path.endswith("/")
     # normpath keeps a leading "//" (POSIX allows it), so collapse slashes after normalizing too.
@@ -211,7 +211,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         upstream_length = r.getheader("Content-Length")
         head_length = self.command == "HEAD" and upstream_length and upstream_length.isascii() \
             and upstream_length.isdigit()
-        self.send_header("Content-Length", upstream_length if head_length else str(len(data)))
+        if head_length:
+            self.send_header("Content-Length", upstream_length)
+        elif self.command != "HEAD":
+            self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(data)
