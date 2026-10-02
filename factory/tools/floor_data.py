@@ -97,20 +97,71 @@ def declared_seats(repo: pathlib.Path):
     }
 
 
-def followup_commit(commits, revision):
-    """First later writer commit touching the rejected revision's stage or stages."""
-    matches = [index for index, commit in enumerate(commits) if commit["sha"].startswith(revision)]
-    if len(matches) != 1:
+# Git records whole seconds and BAND records milliseconds, so a commit made in the same second as a
+# room message can carry an earlier relative time. One second of slack keeps it on the right side.
+CLOCK_SLACK_S = 1.0
+
+
+def rejection_quote(preview):
+    """The first sentence of a REJECT message, without its mentions and verdict prefix."""
+    text = re.sub(r"^(\s*@\S+\s*)+", "", preview)
+    text = re.sub(r"^`?REJECT`?\s*`?[0-9a-f]{7,40}`?:?\s*", "", text)
+    text = re.split(r"\s+Reproduce\b", text)[0].strip()
+    return re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0]
+
+
+def featured_rejection(floor, facts):
+    """The rejection the judge-facing copy shows: facts may name one, else the first with a follow-up."""
+    rejections = floor["rejections"]
+    if not rejections:
         return None
+    wanted = facts.get("featured_reject_rev")
+    if wanted:
+        named = [r for r in rejections if r["rev"] == wanted]
+        if len(named) != 1:
+            sys.exit(f"featured_reject_rev {wanted!r} is not exactly one rejection in floor.json")
+        return named[0]
+    return next((r for r in rejections if r["followup"]), rejections[0])
+
+
+def gap_phrase(seconds):
+    """Elapsed time in words for copy: never '0m'."""
+    seconds = max(0, int(round(seconds)))
+    if seconds < 60:
+        return "under a minute"
+    hours, minutes = divmod(seconds // 60, 60)
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    return "1 minute" if minutes == 1 else f"{minutes} minutes"
+
+
+def rejection_record(commits, accepts, reject_t, revision, message_id):
+    """What happened after one REJECT: the next writer commit in time and the accepted revision.
+
+    `followup` is the first writer commit on the rejected stage made after the REJECT message.
+    `resolved_by` is the first later ACCEPT of a writer revision newer than the rejected one on the
+    same stage. A writer can push the revision that passes before the REJECT reaches the room, so
+    the two answers differ and both are reported.
+    """
+    matches = [index for index, commit in enumerate(commits) if commit["sha"].startswith(revision)]
+    record = {"rev": revision, "t": reject_t, "message_id": message_id, "stages": [],
+              "followup": None, "resolved_by": None}
+    if len(matches) != 1:
+        return record
     index = matches[0]
-    rejected_stages = set(commits[index]["stages"])
-    return next(
-        (candidate for candidate in commits[index + 1:]
-         if candidate["by_seat"]
-         and candidate["author"] in ("builder", "surface")
-         and rejected_stages.intersection(candidate["stages"])),
-        None,
-    )
+    stages = set(commits[index]["stages"])
+    record["stages"] = sorted(stages)
+    writers = [c for c in commits[index + 1:]
+               if c["by_seat"] and c["author"] in ("builder", "surface") and stages.intersection(c["stages"])]
+    followup = next((c for c in writers if c["t"] >= reject_t - CLOCK_SLACK_S), None)
+    if followup:
+        record["followup"] = {k: followup[k] for k in ("sha", "t", "author", "subject")}
+    newer = {c["sha"] for c in writers}
+    for accept_t, accept_rev, accept_id in sorted(accepts):
+        if accept_t > reject_t and any(sha.startswith(accept_rev) for sha in newer):
+            record["resolved_by"] = {"rev": accept_rev, "t": accept_t, "message_id": accept_id}
+            break
+    return record
 
 
 def main():
@@ -183,9 +234,11 @@ def main():
             first.setdefault((v["verdict"], v["rev"]), (e["t"], e["id"]))
     accepts = [(t, rev) for (vd, rev), (t, _) in first.items() if vd == "ACCEPT"]
     rejects = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "REJECT"]
-    # The room provides the reason. Repository order and a shared stage prove a writer changed
-    # the rejected work without comparing second-granular Git time to millisecond room time.
-    changed = sum(1 for _, revision, _ in rejects if followup_commit(commits, revision))
+    accepts_with_ids = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "ACCEPT"]
+    rejections = [rejection_record(commits, accepts_with_ids, t, revision, mid)
+                  for t, revision, mid in sorted(rejects)]
+    changed = sum(1 for r in rejections if r["followup"])
+    resolved = sum(1 for r in rejections if r["resolved_by"])
     handoffs = [e for e in events if not e["human"] and e["to"]]
     human_after_dispatch = [e for e in events if e["human"]][1:]
 
@@ -198,13 +251,15 @@ def main():
         "totals": {
             "handoffs": len(handoffs),
             "handoff_chars_median": sorted(e["chars"] for e in handoffs)[len(handoffs) // 2] if handoffs else 0,
-            "rejects": len(rejects), "rejects_followed_by_seat_commit": changed, "accepts": len(accepts),
+            "rejects": len(rejects), "rejects_followed_by_seat_commit": changed,
+            "rejects_resolved_by_accepted_revision": resolved, "accepts": len(accepts),
             "human_messages_after_dispatch": len(human_after_dispatch),
             "delivery_retries": retries, "delivery_failures": failed,
             "commits": len(commits), "seat_commits": sum(c["by_seat"] for c in commits),
         },
         "stage_first_commit_s": stage_first,
         "events": events,
+        "rejections": rejections,
         "commits": [{k: c[k] for k in ("sha", "author", "t", "subject", "stages", "by_seat")} for c in commits],
     }
     out.write_text(json.dumps(floor, indent=1))

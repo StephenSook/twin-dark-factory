@@ -103,6 +103,7 @@ def run_factory_md_checks():
         "generated_from": {"room_id": "room-test", "messages": len(room["messages"])},
         "duration_s": 0,
         "events": [],
+        "rejections": [],
         "commits": [],
         "totals": {
             "human_messages_after_dispatch": 0,
@@ -110,6 +111,7 @@ def run_factory_md_checks():
             "accepts": 0,
             "handoffs": 0,
             "rejects_followed_by_seat_commit": 0,
+            "rejects_resolved_by_accepted_revision": 0,
             "seat_commits": 0,
             "commits": 0,
         },
@@ -295,7 +297,13 @@ def run_judge_guide_checks():
             {"by_seat": True, "t": 0.5, "author": "builder", "sha": "f" * 40,
              "subject": "fix burst", "stages": [1]},
         ],
+        "rejections": [{
+            "rev": "ccccccc", "t": 1, "message_id": "reject-id", "stages": [1],
+            "followup": {"sha": "f" * 40, "t": 1.5, "author": "builder", "subject": "fix burst"},
+            "resolved_by": {"rev": "ddddddd", "t": 2, "message_id": "accept-id"},
+        }],
         "totals": {"rejects": 1, "rejects_followed_by_seat_commit": 1,
+                   "rejects_resolved_by_accepted_revision": 1,
                    "human_messages_after_dispatch": 3},
     }
     facts = {
@@ -340,6 +348,8 @@ def run_judge_guide_checks():
     no_fix_floor = json.loads(json.dumps(floor))
     no_fix_floor["commits"] = no_fix_floor["commits"][:2]
     no_fix_floor["totals"]["rejects_followed_by_seat_commit"] = 0
+    no_fix_floor["totals"]["rejects_resolved_by_accepted_revision"] = 0
+    no_fix_floor["rejections"][0].update(followup=None, resolved_by=None)
     with tempfile.TemporaryDirectory() as tmp:
         tmp = pathlib.Path(tmp)
         floor_path = tmp / "floor.json"
@@ -353,8 +363,8 @@ def run_judge_guide_checks():
         )
     if (
         no_fix_result.returncode == 0
-        and "0 had a later same-stage writer commit" in no_fix_result.stdout
-        and "every one was followed" not in no_fix_result.stdout
+        and "0 had a same-stage writer commit after the REJECT itself" in no_fix_result.stdout
+        and "every one ended" not in no_fix_result.stdout
         and "unrelated stage work" not in no_fix_result.stdout
     ):
         print("ok   judge guide refuses to label unrelated stage work as a fix")
@@ -390,6 +400,7 @@ def run_judge_guide_checks():
     no_fix_slide = deck.caught_slide(no_fix_floor)
     surface_floor = json.loads(json.dumps(floor))
     surface_floor["commits"][-1]["author"] = "surface"
+    surface_floor["rejections"][0]["followup"]["author"] = "surface"
     surface_slide = deck.caught_slide(surface_floor)
     fixed_claims = deck.rejection_claims(floor["totals"])
     no_fix_claims = deck.rejection_claims(no_fix_floor["totals"])
@@ -425,9 +436,14 @@ def run_judge_guide_checks():
         and "surface changed the same stage" in surface_slide
         and "builder changed the same stage" not in surface_slide
         and fixed_claims[0] == 1
-        and fixed_claims[2] == "Every rejection had a later same-stage writer commit."
+        and fixed_claims[2] == ("Every rejection ended in a newer revision the gatekeeper accepted; "
+                                "1 of 1 had a writer commit after the REJECT.")
         and no_fix_claims[0] == 0
-        and no_fix_claims[2] == "0 of 1 rejections had a later same-stage writer commit."
+        and no_fix_claims[2] == ("0 of 1 rejections ended in a newer revision the gatekeeper accepted; "
+                                 "0 had a writer commit after the REJECT.")
+        and "under a minute later" in fixed_slide
+        and "0m later" not in fixed_slide
+
         and usage_claim == "BAND attributes 2M tokens and about $12 of list-price equivalent to the Claude and Codex seats."
         and "whole run" not in usage_claim.lower()
         and "outside Band's export" in honest_cost
@@ -521,6 +537,38 @@ def run_judge_guide_checks():
         else:
             failures.append(f"judge guide {label}")
             print(f"BAD  judge guide accepted {label}")
+
+
+def run_rejection_timing_checks():
+    """A writer commit made before a REJECT is not its follow-up; the later accepted revision still resolves it."""
+    spec = importlib.util.spec_from_file_location("floor_data_timing", FLOOR_DATA)
+    tools = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tools)
+    commits = [
+        {"sha": "c" * 40, "t": 100.0, "author": "builder", "subject": "candidate", "stages": [1], "by_seat": True},
+        {"sha": "a" * 40, "t": 200.0, "author": "builder", "subject": "pushed before the verdict", "stages": [1], "by_seat": True},
+    ]
+    early = tools.rejection_record(commits, [(400.0, "aaaaaaa", "accept-id")], 300.0, "ccccccc", "reject-id")
+    late_commits = commits + [{"sha": "b" * 40, "t": 330.0, "author": "surface", "subject": "after the verdict",
+                               "stages": [1], "by_seat": True}]
+    late = tools.rejection_record(late_commits, [(400.0, "bbbbbbb", "accept-id")], 300.0, "ccccccc", "reject-id")
+    same_second = tools.rejection_record(
+        [commits[0], dict(commits[1], t=299.5)], [], 300.0, "ccccccc", "reject-id")
+    good = (
+        early["followup"] is None
+        and early["resolved_by"] == {"rev": "aaaaaaa", "t": 400.0, "message_id": "accept-id"}
+        and late["followup"]["sha"] == "b" * 40
+        and late["resolved_by"]["rev"] == "bbbbbbb"
+        and same_second["followup"]["sha"] == "a" * 40
+        and tools.gap_phrase(0) == "under a minute"
+        and tools.gap_phrase(61) == "1 minute"
+        and tools.rejection_quote("@a @b REJECT abc1234: expected x. Then more.") == "expected x."
+    )
+    if good:
+        print("ok   rejection follow-ups are ordered by time, and resolution by a later accept")
+    else:
+        failures.append("rejection timing")
+        print("BAD  rejection follow-up timing", early, late, same_second)
 
 
 def run_floor_verdict_checks():
@@ -619,6 +667,7 @@ def run_floor_verdict_checks():
         and floor_second == floor
         and unrelated.returncode == 0
         and unrelated_floor.get("totals", {}).get("rejects_followed_by_seat_commit") == 0
+        and [r["rev"] for r in floor.get("rejections", [])] == ["ccccccc"]
     )
     if good:
         print("ok   floor data counts only gatekeeper verdicts")
@@ -880,6 +929,7 @@ run_room("text after the final report fails closed", text_after_final, False,
 
 run_factory_md_checks()
 run_floor_verdict_checks()
+run_rejection_timing_checks()
 run_floor_dispatch_time_check()
 run_declared_seat_check()
 run_judge_guide_checks()

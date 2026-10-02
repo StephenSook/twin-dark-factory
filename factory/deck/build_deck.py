@@ -173,33 +173,27 @@ def flow_svg(width=1640, height=720):
         "</svg>"])
 
 
-def caught_slide(floor):
-    """The first rejection and, when proven by stage plus ancestry, its writer follow-up."""
-    import re
-    first = next((e for e in floor["events"] for v in e["verdicts"] if v["verdict"] == "REJECT"), None)
-    if first is None:
+def floor_tools():
+    """The rejection logic lives in factory/tools/floor_data.py, which ships with every result."""
+    import importlib.util
+    path = pathlib.Path(__file__).resolve().parents[1] / "tools" / "floor_data.py"
+    spec = importlib.util.spec_from_file_location("floor_data", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def caught_slide(floor, facts=None):
+    """One rejection and, when a writer commit came after the REJECT on that stage, the follow-up."""
+    tools = floor_tools()
+    featured = tools.featured_rejection(floor, facts or {})
+    if featured is None:
         return slide("No rejections in this run.", "")
-    text = re.sub(r"^(\s*@\S+\s*)+", "", first["preview"])
-    text = re.sub(r"^`?REJECT`?\s*`?[0-9a-f]{7,40}`?:?\s*", "", text).strip()
-    text = re.split(r"\s+Reproduce\b", text)[0]
-    if not text.endswith("."):
-        text = text[: text.rfind(".") + 1] or text  # drop a sentence cut off by the preview limit
-    rev = next(v["rev"] for v in first["verdicts"] if v["verdict"] == "REJECT")
-    matches = [index for index, commit in enumerate(floor["commits"])
-               if commit["sha"].startswith(rev)]
-    fix = None
-    if len(matches) == 1:
-        index = matches[0]
-        rejected_stages = set(floor["commits"][index]["stages"])
-        fix = next(
-            (candidate for candidate in floor["commits"][index + 1:]
-             if candidate["by_seat"]
-             and candidate["author"] in ("builder", "surface")
-             and rejected_stages.intersection(candidate["stages"])),
-            None,
-        )
-    elapsed = max(0, fix["t"] - first["t"]) if fix else 0
-    fix_html = (f'<div class="card fix"><div class="who">{esc(fix["author"])} followed with a same-stage commit, {esc(fmt_t(elapsed))} later</div>'
+    first = next(e for e in floor["events"] if e["id"] == featured["message_id"])
+    text = tools.rejection_quote(first["preview"])
+    rev, fix = featured["rev"], featured["followup"]
+    fix_html = (f'<div class="card fix"><div class="who">{esc(fix["author"])} followed with a same-stage commit, '
+                f'{esc(tools.gap_phrase(fix["t"] - first["t"]))} later</div>'
                 f'<p>{esc(fix["subject"])}</p><div class="id">commit {esc(fix["sha"][:7])}</div></div>') if fix else ""
     headline = (f"A bad result it caught: the gatekeeper refused, then the {fix['author']} changed the same stage."
                 if fix else "A bad result it caught: the gatekeeper refused it.")
@@ -245,16 +239,22 @@ def room_moment_slide(facts):
 
 
 def rejection_claims(totals):
+    """Lead with rejections that ended in a newer accepted revision; say how many had a later commit."""
     rejected = totals["rejects"]
+    resolved = totals["rejects_resolved_by_accepted_revision"]
     followed = totals["rejects_followed_by_seat_commit"]
-    label = "rejections with a same-stage writer follow-up"
+    label = "rejections, each ended by a newer revision that passed" if resolved == rejected else \
+        "rejections ended by a newer revision that passed"
     if rejected == 0:
         headline = "No revisions were rejected in this run."
-    elif followed == rejected:
-        headline = "Every rejection had a later same-stage writer commit."
+    elif resolved == rejected:
+        headline = (f"Every rejection ended in a newer revision the gatekeeper accepted; "
+                    f"{followed} of {rejected} had a writer commit after the REJECT.")
     else:
-        headline = f"{followed} of {rejected} rejections had a later same-stage writer commit."
-    return followed, label, headline
+        headline = (f"{resolved} of {rejected} rejections ended in a newer revision the gatekeeper accepted; "
+                    f"{followed} had a writer commit after the REJECT.")
+    value = rejected if resolved == rejected else resolved
+    return value, label, headline
 
 
 def title_claim(facts, totals):
@@ -320,7 +320,7 @@ def build(floor, sessions_path, facts, draft):
     moment = room_moment_slide(facts)
     if moment:
         slides.append(moment)
-    slides.append(caught_slide(floor))
+    slides.append(caught_slide(floor, facts))
     slides.append(slide(
         rejection_headline,
         timeline(floor)))

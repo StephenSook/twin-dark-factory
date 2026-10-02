@@ -103,35 +103,38 @@ def verdicts(floor):
     return "\n".join(rows)
 
 
-def followup_commit(commits, revision):
-    matches = [index for index, commit in enumerate(commits) if commit["sha"].startswith(revision)]
-    if len(matches) != 1:
-        return None
-    index = matches[0]
-    rejected_stages = set(commits[index]["stages"])
-    return next(
-        (candidate for candidate in commits[index + 1:]
-         if candidate["by_seat"]
-         and candidate["author"] in ("builder", "surface")
-         and rejected_stages.intersection(candidate["stages"])),
-        None,
-    )
+def _floor_tools():
+    """floor_data.py ships beside this file and owns the rejection logic."""
+    import importlib.util
+    path = pathlib.Path(__file__).resolve().with_name("floor_data.py")
+    spec = importlib.util.spec_from_file_location("floor_data", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-def first_catch(floor):
-    for e in floor["events"]:
-        for v in e["verdicts"]:
-            if v["verdict"] != "REJECT":
-                continue
-            text = re.sub(r"^(\s*@\S+\s*)+", "", e["preview"])
-            text = re.sub(r"^`?REJECT`?\s*`?[0-9a-f]{7,40}`?:?\s*", "", text)
-            text = re.split(r"\s+Reproduce\b", text)[0].strip()
-            fix = followup_commit(floor["commits"], v["rev"])
-            elapsed = max(0, fix["t"] - e["t"]) if fix else 0
-            tail = (f" {fix['author']} followed with a same-stage commit {mmss(elapsed)} later in `{fix['sha'][:7]}` "
-                    f"(\"{fix['subject']}\").") if fix else ""
-            return f"at {mmss(e['t'])} the gatekeeper rejected `{v['rev']}`: \"{text}\" (room message `{e['id']}`).{tail}"
-    return "no rejection in this run."
+def first_catch(floor, facts=None):
+    tools = _floor_tools()
+    featured = tools.featured_rejection(floor, facts or {})
+    if featured is None:
+        return "no rejection in this run."
+    e = next(item for item in floor["events"] if item["id"] == featured["message_id"])
+    fix = featured["followup"]
+    tail = (f" {fix['author']} followed with a same-stage commit {tools.gap_phrase(fix['t'] - e['t'])} later in "
+            f"`{fix['sha'][:7]}` (\"{fix['subject']}\").") if fix else ""
+    return (f"at {mmss(e['t'])} the gatekeeper rejected `{featured['rev']}`: "
+            f"\"{tools.rejection_quote(e['preview'])}\" (room message `{e['id']}`).{tail}")
+
+
+def catch_stats(T):
+    resolved, followed, rejects = (T["rejects_resolved_by_accepted_revision"],
+                                   T["rejects_followed_by_seat_commit"], T["rejects"])
+    return (f"{rejects} rejections and {T['accepts']} acceptances over {T['handoffs']} handoffs. "
+            f"{resolved} of the {rejects} rejections ended with a newer writer revision of the same stage that the "
+            f"gatekeeper later accepted; {followed} had a same-stage writer commit after the REJECT itself"
+            + (", and in the rest the writer had already pushed the passing revision before the verdict arrived. "
+               if resolved == rejects and followed < rejects else ". ")
+            + f"{T['seat_commits']} of {T['commits']} commits were made by seats.")
 
 
 def costs(sessions_path, room, facts, draft, development):
@@ -293,11 +296,9 @@ def main():
         "{{CASE_STUDY}}": case_study(repo, track, claims, holdout_line, a.sessions, room, limits_list, T),
         "{{SEATS_TABLE}}": seats_table(repo),
         "{{MANDATE_HASHES}}": hashes(repo),
-        "{{CATCH_STATS}}": (f"{T['rejects']} rejections and {T['accepts']} acceptances over {T['handoffs']} handoffs; "
-                            f"{T['rejects_followed_by_seat_commit']} of the {T['rejects']} rejections were followed by a same-stage writer commit. "
-                            f"{T['seat_commits']} of {T['commits']} commits were made by seats."),
+        "{{CATCH_STATS}}": catch_stats(T),
         "{{VERDICT_TABLE}}": verdicts(floor),
-        "{{FIRST_CATCH}}": first_catch(floor),
+        "{{FIRST_CATCH}}": first_catch(floor, facts),
         "{{COST_TABLE}}": costs(a.sessions, room, facts, a.draft, development),
         "{{ROOM_MESSAGE_COUNT}}": f"{len(room_messages):,}",
         "{{STAGE_TIMES}}": "Wall time from dispatch: " + ", ".join(f"stage {i} accepted at {mmss(e['t'])}" for i, (e, _) in enumerate(accepts, 1))
