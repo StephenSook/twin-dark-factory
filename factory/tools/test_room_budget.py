@@ -443,6 +443,7 @@ def run_judge_guide_checks():
                                  "0 had a writer commit after the REJECT.")
         and "under a minute later" in fixed_slide
         and "0m later" not in fixed_slide
+        and "<b>auditor</b><span>DeepSeek</span>" in deck.seat_grid([], {"auditor": "DeepSeek"})
 
         and usage_claim == "BAND attributes 2M tokens and about $12 of list-price equivalent to the Claude and Codex seats."
         and "whole run" not in usage_claim.lower()

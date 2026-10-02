@@ -101,15 +101,17 @@ def model_family(models):
     return "Other"
 
 
-def seat_grid(costs):
+def seat_grid(costs, outside=None):
+    """Seat chips. A seat billed outside BAND (the auditor) shows the family the facts name for it."""
     families = {seat: model_family(models) for seat, _, _, models in costs}
+    outside = outside or {}
     handles = [seat for seat, _, _, _ in costs]
     if "auditor" not in handles:
         handles.append("auditor")
     return "".join(
         f'<div class="seat {families.get(seat, "Other").lower().replace(" ", "-")}">'
         f'{art(f"seat-{seat}", "icon")}<b>{esc(seat)}</b>'
-        f'<span>{esc(families.get(seat, "not in BAND usage"))}</span></div>'
+        f'<span>{esc(families.get(seat) or outside.get(seat) or "not in BAND usage")}</span></div>'
         for seat in handles
     )
 
@@ -309,7 +311,7 @@ def build(floor, sessions_path, facts, draft):
         f'<div><b>{T["human_messages_after_dispatch"]}</b><span>human messages after dispatch</span></div>'
         f'<div><b>{followed}</b><span>{esc(followed_label)}</span></div></div>'
         f'<p class="url">{esc(facts.get("live_url", ""))}</p>' + art("hero-factory", "hero"), "title"))
-    seats = seat_grid(costs)
+    seats = seat_grid(costs, facts.get("outside_band_families"))
     slides.append(slide(
         "Independent seats check the writers; the seat that writes the code never accepts it.",
         f'<div class="seats">{seats}</div><p class="note">Writers implement. The modeler and gatekeeper '
@@ -354,7 +356,11 @@ def build(floor, sessions_path, facts, draft):
         usage_claim(total_tok, total_cost),
         hbars([(s, c) for s, c, _, _ in costs], unit="", fmt=lambda v: f"${v:,.2f}",
               accent={s: (INDIGO if fam.get(s) == "Codex" else HOT) for s, *_ in costs})
-        + '<p class="note">BAND usage export. Pink: Claude. Indigo: Codex. The OpenCode auditor runs on Featherless outside this export and is reported separately in FACTORY.md.</p>'))
+        + '<p class="note">BAND usage export. Pink: Claude. Indigo: Codex. '
+        + (f'The auditor runs DeepSeek on Featherless outside this export: ${facts["featherless_usd"]:,.2f} '
+           "in Featherless's own billed-request log for the run.</p>"
+           if isinstance(facts.get("featherless_usd"), (int, float))
+           else 'The OpenCode auditor runs on Featherless outside this export and is reported separately in FACTORY.md.</p>')))
     if facts.get("limits"):
         slides.append(slide(
             "What it does not do yet.",
