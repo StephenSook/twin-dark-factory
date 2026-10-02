@@ -28,6 +28,24 @@ def build(floor, facts):
         "",
         str(need(facts, "one_line")),
         "",
+    ]
+    try_it = []
+    if facts.get("live_url"):
+        try_it.append(f"- Live app: {facts['live_url']} (free hosting: the first visit after an idle spell "
+                      "can take about a minute while it starts)")
+    if facts.get("floor_url"):
+        try_it.append(f"- Factory Floor, a replay of the whole room: {facts['floor_url']}")
+    if facts.get("demo_logins") and facts.get("demo_password"):
+        try_it.append("- Demo logins: " + ", ".join(f"`{e}`" for e in facts["demo_logins"])
+                      + f", password `{facts['demo_password']}`. The demo reseeds every hour.")
+    if try_it:
+        lines.extend(["## Try it", "", *try_it, ""])
+    if facts.get("holdout_applicable", True):
+        holdout_line = (f"- Sealed holdout: {need(facts, 'holdout_score')}, "
+                        f"digest `{str(need(facts, 'holdout_digest'))[:16]}`")
+    else:
+        holdout_line = f"- Sealed holdout: {need(facts, 'holdout_note')}"
+    lines.extend([
         "## Measured run",
         "",
         f"- Stages reached: {len(stages)} of 4",
@@ -35,7 +53,7 @@ def build(floor, facts):
         f"- Human messages after dispatch: {totals.get('human_messages_after_dispatch', 0)}",
         f"- Gatekeeper verdicts: {totals.get('rejects', 0)} REJECT and {totals.get('accepts', 0)} ACCEPT",
         f"- Room messages: {floor.get('generated_from', {}).get('messages', 0)} of 10,000",
-        f"- Sealed holdout: {need(facts, 'holdout_score')}, digest `{str(need(facts, 'holdout_digest'))[:16]}`",
+        holdout_line,
         "",
         "## Independent checks",
         "",
@@ -52,11 +70,7 @@ def build(floor, facts):
         "- `evidence/floor.json`: derived replay data",
         "- `evidence/claim-evidence.json`: verbatim citations for the central factory claims",
         "- `floor/`: browser replay generated from the room export and Git history",
-    ]
-    if facts.get("live_url"):
-        lines.extend(["", f"Live app: {facts['live_url']}"])
-    if facts.get("floor_url"):
-        lines.append(f"Factory Floor: {facts['floor_url']}")
+    ])
     lines.extend(["", "## Reproduce", ""])
     for command in need(facts, "check_commands"):
         lines.extend(["```sh", str(command), "```"])
