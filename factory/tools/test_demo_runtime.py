@@ -117,6 +117,12 @@ for label, first in (
     ("a chunked body", b"POST /me HTTP/1.1\r\nHost: demo\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n"),
     ("two Content-Length headers",
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: 2\r\nContent-Length: 0\r\n\r\n{}"),
+    ("a malformed header line the stdlib stops parsing at",
+     b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length : %d\r\n\r\n" % len(smuggled) + smuggled),
+    ("a nested-encoded backslash route to the test endpoints",
+     b"GET /_test%255Creset HTTP/1.1\r\nHost: demo\r\n\r\n"),
+    ("a Content-Length too long to convert",
+     b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: " + b"9" * 5000 + b"\r\n\r\n"),
 ):
     data = exchange(first + b"GET /health HTTP/1.1\r\nHost: demo\r\n\r\n")
     codes = statuses(data)

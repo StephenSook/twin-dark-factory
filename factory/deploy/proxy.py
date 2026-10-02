@@ -78,8 +78,8 @@ def canonical(raw):
         if decoded == path:
             break
         path = decoded
-    if "%" in path or any(ord(c) < 32 for c in path):
-        return None
+    if "%" in path or "\\" in path or any(ord(c) < 32 for c in path):
+        return None  # a backslash can also arrive nested-encoded (%255C), so check after decoding
     trailing = path.endswith("/")
     # normpath keeps a leading "//" (POSIX allows it), so collapse slashes after normalizing too.
     path = re.sub(r"/+", "/", posixpath.normpath(re.sub(r"/+", "/", "/" + path)))
@@ -173,6 +173,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.reply(429, {"error": "rate_limited"}, {"Retry-After": "10"})
         if self.path == "/__demo/status":
             return self.reply(200, {"reset_every_seconds": RESET_SECONDS, **state})
+        if self.headers.defects:
+            # The stdlib stops reading headers at a malformed line, so a body length the edge
+            # honoured may be missing here. Refuse rather than guess where the next request starts.
+            return self.reply(400, {"error": "bad_headers"})
         canon = canonical(self.path)
         if canon is None:
             return self.reply(400, {"error": "bad_path"})
@@ -185,7 +189,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.reply(411, {"error": "length_required"})
         lengths = self.headers.get_all("Content-Length") or ["0"]
         raw_length = lengths[0].strip()
-        if len(lengths) != 1 or not raw_length.isdigit():
+        if len(lengths) != 1 or not raw_length.isdigit() or len(raw_length) > 12:
             return self.reply(400, {"error": "bad_content_length"})
         length = int(raw_length)
         if length > MAX_BODY:
