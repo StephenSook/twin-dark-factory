@@ -52,6 +52,7 @@ check("wrapper clears an inherited image command", "CMD []" in dockerfile)
 
 proxy_text = PROXY_PATH.read_text()
 check("rate limiting ignores caller-controlled forwarding headers", 'self.headers.get("X-Forwarded-For")' not in proxy_text)
+check("the default rate cap allows several page loads through one shared edge address", proxy.RATE >= 1000)
 check("status requests are rate limited too", proxy_text.index("if not allowed(ip)") < proxy_text.index('if self.path == "/__demo/status"'))
 
 
