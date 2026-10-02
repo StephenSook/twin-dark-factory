@@ -17,7 +17,8 @@
 
   function render(f) {
     const T = f.totals;
-    if (!Array.isArray(f.rejections) || T.rejects_resolved_by_accepted_revision === undefined) {
+    if (!Array.isArray(f.rejections) || T.rejects_resolved_by_accepted_revision === undefined
+        || T.rejects_followed_by_seat_commit === undefined) {
       throw new Error("floor.json predates rejection records; regenerate it with tools/floor_data.py");
     }
     const hands = T.human_messages_after_dispatch === 0;

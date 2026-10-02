@@ -113,7 +113,8 @@ def rejection_quote(preview):
 def require_rejection_records(floor):
     """Fail with a fix, not a KeyError, on a floor.json written before rejection records existed."""
     totals = floor.get("totals") or {}
-    if not isinstance(floor.get("rejections"), list) or "rejects_resolved_by_accepted_revision" not in totals:
+    needed = ("rejects_resolved_by_accepted_revision", "rejects_followed_by_seat_commit")
+    if not isinstance(floor.get("rejections"), list) or any(key not in totals for key in needed):
         sys.exit("floor.json predates rejection records; regenerate it with tools/floor_data.py")
 
 
@@ -146,13 +147,17 @@ def gap_phrase(seconds):
 def rejection_record(commits, accepts, reject_t, revision, message_id):
     """What happened after one REJECT: the next writer commit in time and the accepted revision.
 
-    `followup` is the first writer commit on the rejected stage made after the REJECT message.
-    `resolved_by` is the first later ACCEPT of a writer revision newer than the rejected one on the
-    same stage. A writer can push the revision that passes before the REJECT reaches the room, so
-    the two answers differ and both are reported.
+    `followup` is the earliest writer commit on a rejected stage made after the REJECT message.
+    `resolved_by` is the first later ACCEPT of a newer revision whose writer commits since the
+    rejected one, taken together, touch every rejected stage. A writer can push the revision that
+    passes before the REJECT reaches the room, so the two answers differ and both are reported.
+    Times compare unrounded (`t_exact`) values; the record publishes them rounded.
     """
+    def exact(commit):
+        return commit.get("t_exact", commit["t"])
+
     matches = [index for index, commit in enumerate(commits) if commit["sha"].startswith(revision)]
-    record = {"rev": revision, "t": reject_t, "message_id": message_id, "stages": [],
+    record = {"rev": revision, "t": round(reject_t, 1), "message_id": message_id, "stages": [],
               "followup": None, "resolved_by": None}
     if len(matches) != 1:
         return record
@@ -161,15 +166,23 @@ def rejection_record(commits, accepts, reject_t, revision, message_id):
     record["stages"] = sorted(stages)
     writers = [c for c in commits[index + 1:]
                if c["by_seat"] and c["author"] in ("builder", "surface") and stages.intersection(c["stages"])]
-    later = [c for c in writers if c["t"] >= reject_t - CLOCK_SLACK_S]
-    followup = min(later, key=lambda c: c["t"]) if later else None  # earliest in time, not log order
+    later = [c for c in writers if exact(c) >= reject_t - CLOCK_SLACK_S]
+    followup = min(later, key=exact) if later else None  # earliest in time, not log order
     if followup:
-        record["followup"] = {k: followup[k] for k in ("sha", "t", "author", "subject")}
-    # Only a revision that touches every rejected stage can resolve the rejection.
-    newer = {c["sha"] for c in writers if stages.issubset(c["stages"])}
+        record["followup"] = {"sha": followup["sha"], "t": round(exact(followup), 1),
+                              "author": followup["author"], "subject": followup["subject"]}
     for accept_t, accept_rev, accept_id in sorted(accepts):
-        if accept_t > reject_t and any(sha.startswith(accept_rev) for sha in newer):
-            record["resolved_by"] = {"rev": accept_rev, "t": accept_t, "message_id": accept_id}
+        if accept_t <= reject_t:
+            continue
+        hits = [j for j in range(index + 1, len(commits)) if commits[j]["sha"].startswith(accept_rev)]
+        if len(hits) != 1:
+            continue
+        covered = set()
+        for c in commits[index + 1:hits[0] + 1]:
+            if c["by_seat"] and c["author"] in ("builder", "surface"):
+                covered.update(c["stages"])
+        if stages.issubset(covered):
+            record["resolved_by"] = {"rev": accept_rev, "t": round(accept_t, 1), "message_id": accept_id}
             break
     return record
 
@@ -191,6 +204,7 @@ def main():
     humans = {i: n for i, n in names.items() if kinds.get(i) != "Agent"}
 
     events, per_seat = [], {n: {"text": 0, "tool_call": 0, "thought": 0, "error": 0} for n in seats.values()}
+    exact_t = {}  # unrounded message times for ordering; events publish them rounded
     retries = failed = 0
     for m in msgs:
         kind = m["messageType"]
@@ -215,8 +229,9 @@ def main():
                 found.append(head.groups())
             found += LINE_VERDICT.findall(body)
         verdicts = [{"verdict": v, "rev": rev[:7]} for v, rev in dict.fromkeys(found)]
+        exact_t[m["id"]] = ts(m["insertedAt"]) - t0
         events.append({
-            "id": m["id"], "t": round(ts(m["insertedAt"]) - t0, 1), "from": who,
+            "id": m["id"], "t": round(exact_t[m["id"]], 1), "from": who,
             "human": m["senderId"] in humans, "kind": kind, "to": sorted(set(to)),
             "chars": len(body), "verdicts": verdicts,
             "preview": MENTION.sub(lambda x: "@" + names.get(x.group(1), "?"), body)[:220],
@@ -230,6 +245,7 @@ def main():
         # Git records seconds while BAND records milliseconds. Time is display-only, so clamp
         # it to the observed room window. Stage paths and Git order define run membership.
         c["t"] = round(max(0.0, min(relative_time, duration_s)), 1)
+        c["t_exact"] = relative_time  # unclamped, for follow-up order and elapsed time only
         c["by_seat"] = c["author"] in seat_names
     commits = [c for c in repository_commits if c["stages"]]
     stage_first = {}
@@ -244,9 +260,9 @@ def main():
             first.setdefault((v["verdict"], v["rev"]), (e["t"], e["id"]))
     accepts = [(t, rev) for (vd, rev), (t, _) in first.items() if vd == "ACCEPT"]
     rejects = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "REJECT"]
-    accepts_with_ids = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "ACCEPT"]
-    rejections = [rejection_record(commits, accepts_with_ids, t, revision, mid)
-                  for t, revision, mid in sorted(rejects)]
+    accepts_with_ids = [(exact_t[mid], rev, mid) for (vd, rev), (_t, mid) in first.items() if vd == "ACCEPT"]
+    rejections = [rejection_record(commits, accepts_with_ids, exact_t[mid], revision, mid)
+                  for _t, revision, mid in sorted(rejects)]
     changed = sum(1 for r in rejections if r["followup"])
     resolved = sum(1 for r in rejections if r["resolved_by"])
     handoffs = [e for e in events if not e["human"] and e["to"]]

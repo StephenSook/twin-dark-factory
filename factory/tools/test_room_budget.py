@@ -559,6 +559,18 @@ def run_rejection_timing_checks():
     partial = tools.rejection_record(
         [dict(commits[0], stages=[1, 2]), dict(commits[1], t=320.0)],
         [(400.0, "aaaaaaa", "accept-id")], 300.0, "ccccccc", "reject-id")
+    cumulative = tools.rejection_record(
+        [dict(commits[0], stages=[1, 2]), dict(commits[1], sha="1" * 40, t=310.0, stages=[1]),
+         dict(commits[1], sha="2" * 40, t=320.0, stages=[2])],
+        [(400.0, "2222222", "accept-id")], 300.0, "ccccccc", "reject-id")
+    unclamped = tools.rejection_record(
+        [commits[0], dict(commits[1], t=600.0, t_exact=3600.0)], [], 300.0, "ccccccc", "reject-id")
+    missing_followed = {"rejections": [], "totals": {"rejects": 0, "rejects_resolved_by_accepted_revision": 0}}
+    try:
+        tools.featured_rejection(missing_followed, {})
+        partial_floor_refused = False
+    except SystemExit as error:
+        partial_floor_refused = "predates rejection records" in str(error)
     try:
         tools.featured_rejection({"totals": {"rejects": 0}}, {})
         old_floor_refused = False
@@ -575,6 +587,9 @@ def run_rejection_timing_checks():
         and log_order["followup"]["sha"] == "b2" * 20
         and partial["resolved_by"] is None
         and old_floor_refused
+        and partial_floor_refused
+        and (cumulative["resolved_by"] or {}).get("rev") == "2222222"
+        and unclamped["followup"]["t"] == 3600.0
         and tools.gap_phrase(0) == "under a minute"
         and tools.gap_phrase(61) == "1 minute"
         and tools.rejection_quote("@a @b REJECT abc1234: expected x. Then more.") == "expected x."
