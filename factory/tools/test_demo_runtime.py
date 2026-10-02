@@ -98,10 +98,12 @@ service, front = serve(FakeService), serve(proxy.Handler)
 proxy.UP_PORT = service.server_address[1]
 
 
-def exchange(raw):
+def exchange(raw, half_close=False):
     """Send raw bytes on one connection and return everything the proxy writes before closing."""
     with socket.create_connection(front.server_address, timeout=10) as sock:
         sock.sendall(raw)
+        if half_close:
+            sock.shutdown(socket.SHUT_WR)
         chunks = []
         try:
             while chunk := sock.recv(65536):
@@ -153,6 +155,10 @@ check("a HEAD reply from the proxy carries no body", data.endswith(b"\r\n\r\n") 
 data = exchange(b"HEAD /me HTTP/1.1\r\nHost: demo\r\nConnection: close\r\n\r\n")
 check("a forwarded HEAD keeps the service's length and sends no body",
       b"Content-Length: 18" in data and data.endswith(b"\r\n\r\n"))
+
+data = exchange(b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: 10\r\n\r\n{}", half_close=True)
+check("a body shorter than its Content-Length is refused, never forwarded",
+      statuses(data) == [b"400"] and b'"service"' not in data)
 
 data = exchange(b"HEAD /nolen HTTP/1.1\r\nHost: demo\r\nConnection: close\r\n\r\n")
 check("a forwarded HEAD without a service length sends no invented length", b"Content-Length" not in data

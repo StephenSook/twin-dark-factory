@@ -197,6 +197,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if length > MAX_BODY:
             return self.reply(413, {"error": "body_too_large"})
         body = self.rfile.read(length) if length else b""
+        if len(body) != length:
+            return self.reply(400, {"error": "incomplete_body"})  # never forward a truncated request
         headers = {k: v for k, v in self.headers.items() if k.lower() not in HOP}
         try:
             c, r = upstream(self.command, target, body, headers)
