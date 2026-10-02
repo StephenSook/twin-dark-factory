@@ -174,9 +174,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.reply(429, {"error": "rate_limited"}, {"Retry-After": "10"})
         if self.path == "/__demo/status":
             return self.reply(200, {"reset_every_seconds": RESET_SECONDS, **state})
-        if self.headers.defects:
+        if self.headers.defects or any("\r" in v or "\n" in v for v in self.headers.values()):
             # The stdlib stops reading headers at a malformed line, so a body length the edge
-            # honoured may be missing here. Refuse rather than guess where the next request starts.
+            # honoured may be missing here, and it keeps an obsolete folded line inside the value,
+            # which forwarding would turn back into a separate header. Refuse both.
             return self.reply(400, {"error": "bad_headers"})
         canon = canonical(self.path)
         if canon is None:

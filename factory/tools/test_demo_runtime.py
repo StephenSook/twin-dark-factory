@@ -136,6 +136,8 @@ for label, first in (
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: \xb2\r\n\r\nx"),
     ("a Content-Length with a vertical tab the edge may not honour",
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: \x0b4\r\n\r\n" + smuggled),
+    ("an obsolete folded header hiding a Transfer-Encoding line",
+     b"POST /me HTTP/1.1\r\nHost: demo\r\nX-Note: ok\r\n Transfer-Encoding: chunked\r\nContent-Length: 2\r\n\r\n{}"),
     ("a matrix-parameter route to the test endpoints",
      b"POST /_test;x=1/reset HTTP/1.1\r\nHost: demo\r\nContent-Length: 2\r\n\r\n{}"),
     ("a Content-Length too long to convert",
