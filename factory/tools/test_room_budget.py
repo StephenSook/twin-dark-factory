@@ -594,6 +594,17 @@ def run_rejection_timing_checks():
         old_floor_refused = False
     except SystemExit as error:
         old_floor_refused = "predates rejection records" in str(error)
+    branchy = [dict(commits[0], stages=[1, 2]), dict(commits[1], sha="5" * 40, t=310.0, stages=[2]),
+               dict(commits[1], sha="6" * 40, t=320.0, stages=[1])]
+    sibling_ignored = tools.rejection_record(
+        branchy, [(400.0, "6666666", "accept-id")], 300.0, "ccccccc", "reject-id",
+        between=lambda rejected, accepted: [branchy[2]])
+    linear_counted = tools.rejection_record(
+        branchy, [(400.0, "6666666", "accept-id")], 300.0, "ccccccc", "reject-id")
+    same_second_start = tools.rejection_record(
+        [commits[0], dict(commits[1], t=300.0)], [], 300.0, "ccccccc", "reject-id")
+    inside_reject_second = tools.rejection_record(
+        [commits[0], dict(commits[1], t=300.0)], [], 300.7, "ccccccc", "reject-id")
     same_second = tools.rejection_record(
         [commits[0], dict(commits[1], t=299.5)], [], 300.0, "ccccccc", "reject-id")
     good = (
@@ -601,7 +612,11 @@ def run_rejection_timing_checks():
         and early["resolved_by"] == {"rev": "aaaaaaa", "t": 400.0, "message_id": "accept-id"}
         and late["followup"]["sha"] == "b" * 40
         and late["resolved_by"]["rev"] == "bbbbbbb"
-        and same_second["followup"]["sha"] == "a" * 40
+        and same_second["followup"] is None
+        and (same_second_start["followup"] or {}).get("sha") == "a" * 40
+        and inside_reject_second["followup"] is None
+        and sibling_ignored["resolved_by"] is None
+        and (linear_counted["resolved_by"] or {}).get("rev") == "6666666"
         and log_order["followup"]["sha"] == "b2" * 20
         and partial["resolved_by"] is None
         and old_floor_refused
@@ -651,7 +666,7 @@ def run_floor_verdict_checks():
             "stage-1/app.py\n"
             f"{'b' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1funrelated stage work\n"
             "stage-2/app.py\n"
-            f"{'f' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1ffix burst handling\n"
+            f"{'f' * 40}\x1fbuilder\x1f2026-01-01T00:00:02+00:00\x1ffix burst handling\n"
             "stage-1/app.py\n"
             f"{'9' * 40}\x1fintruder\x1f2026-01-01T00:00:02+00:00\x1fundeclared stage work\n"
             "stage-3/app.py\n"

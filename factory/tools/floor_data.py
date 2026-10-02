@@ -97,9 +97,9 @@ def declared_seats(repo: pathlib.Path):
     }
 
 
-# Git records whole seconds and BAND records milliseconds, so a commit made in the same second as a
-# room message can carry an earlier relative time. One second of slack keeps it on the right side.
-CLOCK_SLACK_S = 1.0
+# Git records whole seconds (truncated) and BAND records milliseconds. A commit's real time is at or
+# after its Git second, so only a Git time at or after the REJECT proves the commit came later.
+# A commit in the REJECT's own second can go either way and is not counted.
 
 
 def rejection_quote(preview):
@@ -144,7 +144,7 @@ def gap_phrase(seconds):
     return "1 minute" if minutes == 1 else f"{minutes} minutes"
 
 
-def rejection_record(commits, accepts, reject_t, revision, message_id):
+def rejection_record(commits, accepts, reject_t, revision, message_id, between=None):
     """What happened after one REJECT: the next writer commit in time and the accepted revision.
 
     `followup` is the earliest writer commit on a rejected stage made after the REJECT message.
@@ -152,6 +152,8 @@ def rejection_record(commits, accepts, reject_t, revision, message_id):
     rejected one, taken together, touch every rejected stage. A writer can push the revision that
     passes before the REJECT reaches the room, so the two answers differ and both are reported.
     Times compare unrounded (`t_exact`) values; the record publishes them rounded.
+    `between(rejected_index, accepted_index)` returns the commits that the accepted revision contains
+    since the rejected one; without it, a linear history is assumed.
     """
     def exact(commit):
         return commit.get("t_exact", commit["t"])
@@ -166,8 +168,7 @@ def rejection_record(commits, accepts, reject_t, revision, message_id):
     record["stages"] = sorted(stages)
     writers = [c for c in commits[index + 1:]
                if c["by_seat"] and c["author"] in ("builder", "surface") and stages.intersection(c["stages"])]
-    # Git truncates to the second, so a commit made after the REJECT has a time above reject_t - 1.
-    later = [c for c in writers if exact(c) > reject_t - CLOCK_SLACK_S]
+    later = [c for c in writers if exact(c) >= reject_t]
     followup = min(later, key=exact) if later else None  # earliest in time, not log order
     if followup:
         record["followup"] = {"sha": followup["sha"], "t": round(exact(followup), 1),
@@ -180,8 +181,11 @@ def rejection_record(commits, accepts, reject_t, revision, message_id):
         if (accepted is None or not stages.intersection(accepted["stages"])
                 or not accepted["by_seat"] or accepted["author"] not in ("builder", "surface")):
             continue  # the accepted revision itself must be a writer commit on a rejected stage
+        contained = (between(index, hits[0]) if between else commits[index + 1:hits[0] + 1])
+        if accepted not in contained:
+            continue  # the accepted revision does not descend from the rejected one
         covered = set()
-        for c in commits[index + 1:hits[0] + 1]:
+        for c in contained:
             if c["by_seat"] and c["author"] in ("builder", "surface"):
                 covered.update(c["stages"])
         if stages.issubset(covered):
@@ -264,7 +268,16 @@ def main():
     accepts = [(t, rev) for (vd, rev), (t, _) in first.items() if vd == "ACCEPT"]
     rejects = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "REJECT"]
     accepts_with_ids = [(exact_t[mid], rev, mid) for (vd, rev), (_t, mid) in first.items() if vd == "ACCEPT"]
-    rejections = [rejection_record(commits, accepts_with_ids, exact_t[mid], revision, mid)
+    between = None
+    if not repo.is_file():
+        def between(rejected_index, accepted_index):
+            """Commits the accepted revision contains since the rejected one, by Git ancestry."""
+            listed = subprocess.run(
+                ["git", "-C", str(repo), "rev-list", "--ancestry-path",
+                 f"{commits[rejected_index]['sha']}..{commits[accepted_index]['sha']}"],
+                capture_output=True, text=True, check=True).stdout.split()
+            return [c for c in commits if c["sha"] in set(listed)]
+    rejections = [rejection_record(commits, accepts_with_ids, exact_t[mid], revision, mid, between)
                   for _t, revision, mid in sorted(rejects, key=lambda r: (exact_t[r[2]], r[1]))]
     changed = sum(1 for r in rejections if r["followup"])
     resolved = sum(1 for r in rejections if r["resolved_by"])
