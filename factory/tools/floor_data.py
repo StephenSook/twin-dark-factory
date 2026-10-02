@@ -17,7 +17,7 @@ MENTION = re.compile(r"@\[\[([0-9a-f-]{36})\]\]")
 # and a revision (the form the mandates require). Quotes of an old verdict later in a message
 # are not verdicts.
 LEAD = re.compile(r"^(?:[ \t]*@\[\[[0-9a-f-]{36}\]\])*[ \t*_#-]*")  # first line only, never a newline
-VERDICT = re.compile(r"^`?(ACCEPT|REJECT)`?\s*`?([0-9a-f]{7,40})`?")
+VERDICT = re.compile(r"^`?(ACCEPT|REJECT)`?[ \t]*`?([0-9a-f]{7,40})`?")
 STAGE_PATH = re.compile(r"^stage-(\d+)/")
 
 

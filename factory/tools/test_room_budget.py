@@ -638,6 +638,8 @@ def run_rejection_timing_checks():
         and tools.message_verdicts("gatekeeper", "text", "@[[" + "a" * 8 + "-0000-4000-8000-" + "a" * 12 + "]] **REJECT ccccccc** fresh") == [
             {"verdict": "REJECT", "rev": "ccccccc"}]
         and room_gate_accepts("Prior verdict follows:\nACCEPT abcdef1") == []
+        and room_gate_accepts("ACCEPT\nabcdef1 is a second-line hash") == []
+        and tools.message_verdicts("gatekeeper", "text", "REJECT\nccccccc second line") == []
         and room_gate_accepts("@[[" + "a" * 8 + "-0000-4000-8000-" + "a" * 12 + "]] ACCEPT abcdef1 stage 1") == ["abcdef1"]
         and (linear_counted["resolved_by"] or {}).get("rev") == "6666666"
         and log_order["followup"]["sha"] == "b2" * 20
