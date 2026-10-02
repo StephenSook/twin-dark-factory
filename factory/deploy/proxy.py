@@ -188,7 +188,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # The proxy frames bodies by Content-Length only; a chunked body would be left unread.
             return self.reply(411, {"error": "length_required"})
         lengths = self.headers.get_all("Content-Length") or ["0"]
-        raw_length = lengths[0].strip()
+        raw_length = lengths[0].strip(" \t")  # HTTP whitespace only; any other control byte is refused
         if len(lengths) != 1 or re.fullmatch(r"[0-9]{1,12}", raw_length) is None:
             return self.reply(400, {"error": "bad_content_length"})
         length = int(raw_length)

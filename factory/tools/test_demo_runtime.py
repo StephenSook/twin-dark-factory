@@ -126,6 +126,8 @@ for label, first in (
      b"20\r\n" + smuggled + b"\r\n0\r\n\r\n"),
     ("a Content-Length of non-ASCII digits",
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: \xb2\r\n\r\nx"),
+    ("a Content-Length with a vertical tab the edge may not honour",
+     b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: \x0b4\r\n\r\n" + smuggled),
     ("a Content-Length too long to convert",
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: " + b"9" * 5000 + b"\r\n\r\n"),
 ):
