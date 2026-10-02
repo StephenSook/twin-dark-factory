@@ -69,14 +69,20 @@ def delivery(meta) -> tuple[int, int]:
     return extra, failed
 
 
+SAVED_LOG_MARKER = "floor-log: committer-time"
 GIT_FORMAT = "%H%x1f%an%x1f%cI%x1f%s"  # committer time: when the commit was made, not authored
 
 
 def git_commits(repo: pathlib.Path):
     """Commits from a repository, or from a saved log file made with:
-    git log --reverse --format='%H%x1f%an%x1f%cI%x1f%s' --name-only > commits.log"""
+    { echo 'floor-log: committer-time'; git log --reverse --format='%H%x1f%an%x1f%cI%x1f%s' --name-only; } > commits.log
+    The marker line proves the log carries committer times; an unmarked log may be an older
+    author-time export and is refused."""
     if repo.is_file():
         out = repo.read_text()
+        if not out.startswith(SAVED_LOG_MARKER + "\n"):
+            sys.exit(f"saved log {repo} lacks the '{SAVED_LOG_MARKER}' first line; regenerate it")
+        out = out[len(SAVED_LOG_MARKER) + 1:]
     else:
         out = subprocess.run(["git", "-C", str(repo), "log", "--reverse", f"--format={GIT_FORMAT}", "--name-only"],
                              capture_output=True, text=True, check=True).stdout
@@ -287,7 +293,8 @@ def main():
     # One decision per (verdict, commit): the same verdict sent to two seats, or naming one commit by
     # a short and a full hash, counts once; two commits that share a short prefix stay distinct.
     def commit_key(rev):
-        hits = [c["sha"] for c in commits if c["sha"].startswith(rev)]
+        # Ambiguity is judged against every commit, including those outside the stage folders.
+        hits = [c["sha"] for c in repository_commits if c["sha"].startswith(rev)]
         if len(hits) > 1:
             sys.exit(f"verdict revision {rev} names {len(hits)} commits; refusing ambiguous evidence")
         return hits[0] if hits else rev

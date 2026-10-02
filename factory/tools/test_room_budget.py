@@ -693,6 +693,7 @@ def run_saved_log_ancestry_check():
         room_path, log_path, out = tmp / "room.json", tmp / "commits.log", tmp / "floor.json"
         room_path.write_text(json.dumps(room))
         log_path.write_text(
+            "floor-log: committer-time\n"
             f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\nmandates/builder.md\n"
             f"{'1' * 40}\x1fbuilder\x1f2026-01-01T00:00:00+00:00\x1frejected\nstage-1/a.py\nstage-2/a.py\n"
             f"{'2' * 40}\x1fbuilder\x1f2026-01-01T00:00:03+00:00\x1fsibling stage 2\nstage-2/a.py\n"
@@ -722,6 +723,7 @@ def run_floor_dedup_and_tie_checks():
         a1, a2, b1 = "abcdef1" + "0" * 33, "abcdef1" + "f" * 33, "1234567" + "a" * 33
         log = tmp / "commits.log"
         log.write_text(
+            "floor-log: committer-time\n"
             f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\nmandates/builder.md\n"
             f"{a1}\x1fbuilder\x1f2026-01-01T00:00:00+00:00\x1fone\nstage-1/a.py\n"
             f"{a2}\x1fbuilder\x1f2026-01-01T00:00:00+00:00\x1ftwo\nstage-1/b.py\n"
@@ -735,6 +737,16 @@ def run_floor_dedup_and_tie_checks():
         distinct = run(room_with([f"REJECT {a1} first", f"REJECT {a2} second"]), log)
         same = run(room_with([f"REJECT {b1[:7]} short", f"REJECT {b1} full"]), log)
         ambiguous = run(room_with(["REJECT abcdef1 one", "REJECT abcdef1 two"]), log)
+        unmarked = tmp / "unmarked.log"
+        unmarked.write_text(log.read_text().split("\n", 1)[1])
+        unmarked_result = run(room_with([f"REJECT {b1} full"]), unmarked)
+        outside = tmp / "outside.log"
+        outside.write_text(
+            "floor-log: committer-time\n"
+            f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\nmandates/builder.md\n"
+            f"{a1}\x1fbuilder\x1f2026-01-01T00:00:00+00:00\x1fstage\nstage-1/a.py\n"
+            f"{a2}\x1fbuilder\x1f2026-01-01T00:00:00+00:00\x1fdocs only\nREADME.md\n")
+        outside_result = run(room_with(["REJECT abcdef1 stage"]), outside)
         repo = tmp / "repo"
         git = lambda *args, when="2026-01-01T00:00:01+00:00", authored=None: subprocess.run(
             ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True,
@@ -769,6 +781,8 @@ def run_floor_dedup_and_tie_checks():
         and ((tie.get("rejections") or [{}])[0].get("followup") or {}).get("sha") == boundary
         and "2 rejections" in distinct_caption
         and "refusing ambiguous evidence" in str(ambiguous.get("error"))
+        and "lacks the 'floor-log: committer-time' first line" in str(unmarked_result.get("error"))
+        and "refusing ambiguous evidence" in str(outside_result.get("error"))
     )
     if good:
         print("ok   verdicts de-duplicate by commit and equal timestamps keep export order")
@@ -799,6 +813,7 @@ def run_floor_verdict_checks():
         floor_path = tmp / "floor.json"
         room_path.write_text(json.dumps(room))
         log_path.write_text(
+            "floor-log: committer-time\n"
             f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\n"
             "mandates/builder.md\n"
             f"{'c' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1fcandidate with failing burst\n"
@@ -832,6 +847,7 @@ def run_floor_verdict_checks():
         floor_second = json.loads(second_path.read_text()) if second_path.exists() else {}
         unrelated_log = tmp / "unrelated.log"
         unrelated_log.write_text(
+            "floor-log: committer-time\n"
             f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\n"
             "mandates/builder.md\n"
             f"{'c' * 40}\x1fbuilder\x1f2026-01-01T00:00:01+00:00\x1fcandidate with failing burst\n"
@@ -902,6 +918,7 @@ def run_floor_dispatch_time_check():
         floor_path = tmp / "floor.json"
         room_path.write_text(json.dumps(room))
         log_path.write_text(
+            "floor-log: committer-time\n"
             f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\n"
             "mandates/builder.md\n"
             f"{'b' * 40}\x1fbuilder\x1f2026-01-01T00:00:12+00:00\x1fbuild\n"
