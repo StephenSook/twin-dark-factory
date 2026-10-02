@@ -565,6 +565,12 @@ def run_rejection_timing_checks():
         [(400.0, "2222222", "accept-id")], 300.0, "ccccccc", "reject-id")
     unclamped = tools.rejection_record(
         [commits[0], dict(commits[1], t=600.0, t_exact=3600.0)], [], 300.0, "ccccccc", "reject-id")
+    gatekeeper_accept = tools.rejection_record(
+        [commits[0], dict(commits[1], t=310.0),
+         dict(commits[1], sha="3" * 40, t=320.0, author="gatekeeper")],
+        [(400.0, "3333333", "accept-id")], 300.0, "ccccccc", "reject-id")
+    one_second_before = tools.rejection_record(
+        [commits[0], dict(commits[1], t=299.0)], [], 300.0, "ccccccc", "reject-id")
     off_stage_accept = tools.rejection_record(
         [commits[0], dict(commits[1], sha="1" * 40, t=310.0, stages=[1]),
          dict(commits[1], sha="2" * 40, t=320.0, stages=[2])],
@@ -601,6 +607,8 @@ def run_rejection_timing_checks():
         and old_floor_refused
         and partial_floor_refused
         and off_stage_accept["resolved_by"] is None
+        and gatekeeper_accept["resolved_by"] is None
+        and one_second_before["followup"] is None
         and readme_refused
         and (cumulative["resolved_by"] or {}).get("rev") == "2222222"
         and unclamped["followup"]["t"] == 3600.0

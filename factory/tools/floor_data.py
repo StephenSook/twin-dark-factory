@@ -166,7 +166,8 @@ def rejection_record(commits, accepts, reject_t, revision, message_id):
     record["stages"] = sorted(stages)
     writers = [c for c in commits[index + 1:]
                if c["by_seat"] and c["author"] in ("builder", "surface") and stages.intersection(c["stages"])]
-    later = [c for c in writers if exact(c) >= reject_t - CLOCK_SLACK_S]
+    # Git truncates to the second, so a commit made after the REJECT has a time above reject_t - 1.
+    later = [c for c in writers if exact(c) > reject_t - CLOCK_SLACK_S]
     followup = min(later, key=exact) if later else None  # earliest in time, not log order
     if followup:
         record["followup"] = {"sha": followup["sha"], "t": round(exact(followup), 1),
@@ -175,8 +176,10 @@ def rejection_record(commits, accepts, reject_t, revision, message_id):
         if accept_t <= reject_t:
             continue
         hits = [j for j in range(index + 1, len(commits)) if commits[j]["sha"].startswith(accept_rev)]
-        if len(hits) != 1 or not stages.intersection(commits[hits[0]]["stages"]):
-            continue  # the accepted revision itself must be on a rejected stage
+        accepted = commits[hits[0]] if len(hits) == 1 else None
+        if (accepted is None or not stages.intersection(accepted["stages"])
+                or not accepted["by_seat"] or accepted["author"] not in ("builder", "surface")):
+            continue  # the accepted revision itself must be a writer commit on a rejected stage
         covered = set()
         for c in commits[index + 1:hits[0] + 1]:
             if c["by_seat"] and c["author"] in ("builder", "surface"):
