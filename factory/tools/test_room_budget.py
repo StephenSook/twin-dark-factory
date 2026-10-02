@@ -770,6 +770,15 @@ def run_floor_dedup_and_tie_checks():
             authored="2026-01-01T00:00:01+00:00")  # reused author time, created at second 5
         boundary = git("rev-parse", "HEAD").stdout.strip()
         tie = run(room_with([f"REJECT {rejected[:7]} bad", f"ACCEPT {fixed[:7]} good"], same_time=True), repo)
+        # A commit reachable only from an unmerged branch is still a known commit: its short and full
+        # hashes name one decision.
+        git("checkout", "-q", "-b", "side", rejected)
+        (repo / "stage-1" / "side.py").write_text("side\n")
+        git("add", "-A")
+        git("commit", "-q", "-m", "side branch", when="2026-01-01T00:00:03+00:00")
+        side = git("rev-parse", "HEAD").stdout.strip()
+        git("checkout", "-q", "main")
+        side_named = run(room_with([f"REJECT {side[:7]} short", f"REJECT {side} full"]), repo)
     deck_spec = importlib.util.spec_from_file_location("deck_dedup", DECK)
     deck_module = importlib.util.module_from_spec(deck_spec)
     deck_spec.loader.exec_module(deck_module)
@@ -783,6 +792,7 @@ def run_floor_dedup_and_tie_checks():
         and "refusing ambiguous evidence" in str(ambiguous.get("error"))
         and "lacks the 'floor-log: committer-time' first line" in str(unmarked_result.get("error"))
         and "refusing ambiguous evidence" in str(outside_result.get("error"))
+        and (side_named.get("totals") or {}).get("rejects") == 1
     )
     if good:
         print("ok   verdicts de-duplicate by commit and equal timestamps keep export order")

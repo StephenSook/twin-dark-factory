@@ -77,7 +77,8 @@ def git_commits(repo: pathlib.Path):
     """Commits from a repository, or from a saved log file made with:
     { echo 'floor-log: committer-time'; git log --reverse --format='%H%x1f%an%x1f%cI%x1f%s' --name-only; } > commits.log
     The marker line proves the log carries committer times; an unmarked log may be an older
-    author-time export and is refused."""
+    author-time export and is refused. A saved log lists only the history it was made from, so
+    ambiguity against commits on other branches is checked only in repository mode."""
     if repo.is_file():
         out = repo.read_text()
         if not out.startswith(SAVED_LOG_MARKER + "\n"):
@@ -292,9 +293,15 @@ def main():
                 stage_first.setdefault(s, c["t"])
     # One decision per (verdict, commit): the same verdict sent to two seats, or naming one commit by
     # a short and a full hash, counts once; two commits that share a short prefix stay distinct.
+    # Ambiguity is judged against every commit object: in a repository, those reachable from any ref,
+    # not only HEAD; a saved log can only speak for the history it lists.
+    every_sha = {c["sha"] for c in repository_commits}
+    if not repo.is_file():
+        every_sha |= set(subprocess.run(["git", "-C", str(repo), "rev-list", "--all"],
+                                        capture_output=True, text=True, check=True).stdout.split())
+
     def commit_key(rev):
-        # Ambiguity is judged against every commit, including those outside the stage folders.
-        hits = [c["sha"] for c in repository_commits if c["sha"].startswith(rev)]
+        hits = [sha for sha in every_sha if sha.startswith(rev)]
         if len(hits) > 1:
             sys.exit(f"verdict revision {rev} names {len(hits)} commits; refusing ambiguous evidence")
         return hits[0] if hits else rev
