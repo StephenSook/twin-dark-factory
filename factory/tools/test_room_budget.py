@@ -641,6 +641,9 @@ def run_rejection_timing_checks():
         and room_gate_accepts("ACCEPT\nabcdef1 is a second-line hash") == []
         and room_gate_accepts("ACCEPTabcdef1 glued") == []
         and room_gate_accepts("ACCEPT abcdef1garbage") == []
+        and room_gate_accepts("ACCEPT `abcdef1`garbage") == []
+        and room_gate_accepts("ACCEPT `abcdef1` stage 2") == ["abcdef1"]
+        and tools.message_verdicts("gatekeeper", "text", "REJECT `ccccccc`garbage") == []
         and tools.message_verdicts("gatekeeper", "text", "REJECTccccccc glued") == []
         and tools.message_verdicts("gatekeeper", "text", "REJECT ccccccczz trailing") == []
         and tools.message_verdicts("gatekeeper", "text", "REJECT `ccccccc`: reason") == [
