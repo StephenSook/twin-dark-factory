@@ -51,5 +51,33 @@ expect("verbatim room quote keeps its own typography", True,
 expect("a paraphrase of a room message is still checked", False,
        run({"floor.html": "<p>STAGE ONE HANDOFF — PART ONE OF FIVE for all seats</p>"}, quotes=quote), "em dash")
 expect("missing surface fails", False, run({}), "")
+# Review findings, 2026-10-02: each of these passed before and must fail now.
+expect("placeholder markdown link target fails", False,
+       run({"README.md": "Live app: [open it](https://example.com/app)\n"}), "pending link target")
+expect("placeholder html href fails", False,
+       run({"i.html": '<p><a href="https://example.com">Live app</a></p>'}), "pending link target")
+expect("placeholder image source fails", False,
+       run({"i.html": '<p>Shot <img src="TODO.png" alt="app"></p>'}), "pending link target")
+expect("empty link target fails", False,
+       run({"i.html": '<p><a href="">Live app</a></p>'}), "pending link target")
+expect("markdown autolink to a placeholder host fails", False,
+       run({"README.md": "Live app: <https://example.com/x>\n"}), "pending link target")
+expect("markdown bare token in angle brackets fails", False,
+       run({"README.md": "Run id: <RUN_ID>\n"}), "pending link target")
+expect("markdown em dash entity fails", False,
+       run({"README.md": "Four stages &mdash; one room.\n"}), "em dash")
+expect("markdown numeric em dash entity fails", False,
+       run({"README.md": "Four stages &#8212; one room.\n"}), "em dash")
+expect("single-letter placeholder fails", False, run({"F.md": "Stage {N} reached.\n"}), "pending value")
+expect("spaced template placeholder fails", False, run({"F.md": "Run {{ run_id }} done.\n"}), "pending value")
+expect("FIXME fails", False, run({"F.md": "Cost FIXME later.\n"}), "pending value")
+expect("XXX fails", False, run({"F.md": "Cost is XXX.\n"}), "pending value")
+expect("an empty surface beside a full one fails", False,
+       run({"README.md": clean, "deploy.md": ""}), "no visible text units")
+quoted_pending = "the band wrote TODO inside this exact room message here"
+expect("a quoted unit is still checked for pending values", False,
+       run({"floor.html": f"<p>{quoted_pending}</p>"}, quotes=quoted_pending), "pending value")
+expect("a real link passes", True,
+       run({"README.md": "Live app: [open it](https://twin-pocketful-judged-demo.onrender.com/)\n"}), "PASS")
 print(f"failures: {len(failures)}")
 sys.exit(1 if failures else 0)

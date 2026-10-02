@@ -11,6 +11,7 @@ verbatim excerpt of a room message or a replay preview (--quotes) is the band's 
 not rewritten, so only those units skip the typography and tone checks.
 """
 
+import html
 import importlib.util
 import json
 import pathlib
@@ -27,7 +28,13 @@ TYPOGRAPHY = {
     "‘": "curly quote", "’": "curly quote",
 }
 PENDING = re.compile(
-    r"REQUIRED_|NOT MEASURED YET|\{\{[A-Z_]+\}\}|\{[A-Z][A-Z0-9_]+\}|\bTODO\b|\bTBD\b|lorem ipsum|example\.(?:com|org)",
+    r"REQUIRED_|NOT MEASURED YET|\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}|\{[A-Z][A-Z0-9_]*\}|"
+    r"\bTODO\b|\bTBD\b|\bFIXME\b|\bXXX\b|lorem ipsum|example\.(?:com|org|net)",
+    re.IGNORECASE,
+)
+# Link targets and image sources are judge-facing values too, but they are not visible text units.
+LINK_TARGETS = re.compile(
+    r"\]\(\s*<?([^)\s>]+)|<(https?://[^>\s]+)>|<([A-Z][A-Z0-9_]+)>|\b(?:href|src)\s*=\s*[\"']([^\"']*)[\"']",
     re.IGNORECASE,
 )
 AI_TONE = re.compile(
@@ -56,14 +63,21 @@ def is_quote(text, corpus):
 
 def problems_in(path, corpus=()):
     found = []
+    raw = path.read_text(encoding="utf-8")
+    for match in LINK_TARGETS.finditer(raw):
+        target = next(group for group in match.groups() if group is not None)
+        if not target or PENDING.search(target) or re.fullmatch(r"[A-Z][A-Z0-9_]+", target):
+            found.append(f"{path.name}: pending link target {target!r}")
     for text, _kind in _claims.surface_units(path):
+        # Markdown keeps HTML entities as text; GitHub renders them, so check the rendered form.
+        text = html.unescape(text)
+        for match in PENDING.finditer(text):
+            found.append(f"{path.name}: pending value {match.group(0)!r}: {text[:80]}")
         if is_quote(text, corpus):
             continue
         for char, label in TYPOGRAPHY.items():
             if char in text:
                 found.append(f"{path.name}: {label}: {text[:80]}")
-        for match in PENDING.finditer(text):
-            found.append(f"{path.name}: pending value {match.group(0)!r}: {text[:80]}")
         for match in AI_TONE.finditer(text):
             found.append(f"{path.name}: AI-tone word {match.group(0)!r}: {text[:80]}")
     return found
@@ -90,10 +104,11 @@ def main(argv):
         if not path.is_file():
             problems.append(f"missing public surface: {raw}")
             continue
-        units += len(_claims.surface_units(path))
+        count = len(_claims.surface_units(path))
+        if count == 0:
+            problems.append(f"no visible text units were read from {path.name}")
+        units += count
         problems += problems_in(path, corpus)
-    if units == 0 and not problems:
-        problems.append("no visible text units were read")
     if problems:
         for line in sorted(set(problems)):
             print("FAIL  " + line)
