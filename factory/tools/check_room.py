@@ -34,7 +34,7 @@ ROOM_COUNT = re.compile(
 # The same rule as tools/floor_data.py: a verdict is what a gatekeeper text message starts with,
 # after any @mentions and Markdown emphasis on its first line. A quoted or later ACCEPT never counts.
 LEAD = re.compile(r"^(?:[ \t]*@\[\[[0-9a-f-]{36}\]\])*[ \t*_#-]*")
-ACCEPT = re.compile(r"^`?ACCEPT`?[ \t]+`?([0-9a-f]{7,40})(?:`(?![0-9A-Za-z_])|(?![0-9A-Za-z_`]))")
+ACCEPT = re.compile(r"^(?:`ACCEPT`|ACCEPT(?!`))[ \t]+(?:`(?P<r1>[0-9a-f]{7,40})`|(?P<r2>[0-9a-f]{7,40})(?!`))(?!\w)")
 
 
 def main():
@@ -116,7 +116,7 @@ def main():
             if (m.get("senderName") or "").split("/")[-1] != "gatekeeper":
                 continue
             head = ACCEPT.match(LEAD.sub("", m.get("content") or "", count=1))
-            for rev in ([head.group(1)] if head else []):
+            for rev in ([head["r1"] or head["r2"]] if head else []):
                 same_revision = any(old.startswith(rev) or rev.startswith(old)
                                     for old in seen_revs)
                 if not same_revision:

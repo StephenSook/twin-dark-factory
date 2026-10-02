@@ -17,8 +17,10 @@ MENTION = re.compile(r"@\[\[([0-9a-f-]{36})\]\]")
 # and a revision (the form the mandates require). Quotes of an old verdict later in a message
 # are not verdicts.
 LEAD = re.compile(r"^(?:[ \t]*@\[\[[0-9a-f-]{36}\]\])*[ \t*_#-]*")  # first line only, never a newline
-# The revision ends at a closing backtick or at a non-word character, never inside other text.
-VERDICT = re.compile(r"^`?(ACCEPT|REJECT)`?[ \t]+`?([0-9a-f]{7,40})(?:`(?![0-9A-Za-z_])|(?![0-9A-Za-z_`]))")
+# A backticked word or revision must close its backtick; a bare one must not touch one. The revision
+# ends at a non-word character (Unicode aware), never inside other text.
+VERDICT = re.compile(r"^(?:`(?P<w1>ACCEPT|REJECT)`|(?P<w2>ACCEPT|REJECT)(?!`))[ \t]+"
+                     r"(?:`(?P<r1>[0-9a-f]{7,40})`|(?P<r2>[0-9a-f]{7,40})(?!`))(?!\w)")
 STAGE_PATH = re.compile(r"^stage-(\d+)/")
 
 
@@ -30,7 +32,9 @@ def message_verdicts(who, kind, body):
     if who != "gatekeeper" or kind != "text":
         return []
     head = VERDICT.match(LEAD.sub("", body, count=1))
-    return [{"verdict": head.group(1), "rev": head.group(2)[:7]}] if head else []
+    if not head:
+        return []
+    return [{"verdict": head["w1"] or head["w2"], "rev": (head["r1"] or head["r2"])[:7]}]
 
 
 def ts(s: str) -> float:

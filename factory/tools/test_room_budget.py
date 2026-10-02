@@ -546,7 +546,7 @@ def room_gate_accepts(content):
     gate = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gate)
     head = gate.ACCEPT.match(gate.LEAD.sub("", content, count=1))
-    return [head.group(1)] if head else []
+    return [head["r1"] or head["r2"]] if head else []
 
 
 def run_rejection_timing_checks():
@@ -644,6 +644,11 @@ def run_rejection_timing_checks():
         and room_gate_accepts("ACCEPT `abcdef1`garbage") == []
         and room_gate_accepts("ACCEPT `abcdef1` stage 2") == ["abcdef1"]
         and tools.message_verdicts("gatekeeper", "text", "REJECT `ccccccc`garbage") == []
+        and tools.message_verdicts("gatekeeper", "text", "REJECT `ccccccc reason") == []
+        and room_gate_accepts("ACCEPT `abcdef1 stage 2") == []
+        and tools.message_verdicts("gatekeeper", "text", "REJECT `ccccccc`\u00e9chec") == []
+        and tools.message_verdicts("gatekeeper", "text", "`REJECT` `ccccccc`: reason") == [
+            {"verdict": "REJECT", "rev": "ccccccc"}]
         and tools.message_verdicts("gatekeeper", "text", "REJECTccccccc glued") == []
         and tools.message_verdicts("gatekeeper", "text", "REJECT ccccccczz trailing") == []
         and tools.message_verdicts("gatekeeper", "text", "REJECT `ccccccc`: reason") == [
