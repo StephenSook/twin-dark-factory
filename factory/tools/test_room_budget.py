@@ -634,6 +634,7 @@ def run_rejection_timing_checks():
         and tools.message_verdicts("gatekeeper", "text", "> REJECT ccccccc quoted") == []
         and tools.message_verdicts("gatekeeper", "error", "REJECT deadbee transport failed") == []
         and tools.message_verdicts("builder", "text", "REJECT ccccccc relayed") == []
+        and tools.message_verdicts("gatekeeper", "text", "REJECT ccccccc: example", is_agent=False) == []
         and tools.message_verdicts("gatekeeper", "text", "---\nREJECT ccccccc stale") == []
         and tools.message_verdicts("gatekeeper", "text", "@[[" + "a" * 8 + "-0000-4000-8000-" + "a" * 12 + "]] **REJECT ccccccc** fresh") == [
             {"verdict": "REJECT", "rev": "ccccccc"}]

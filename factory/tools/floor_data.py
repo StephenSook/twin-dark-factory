@@ -24,12 +24,12 @@ VERDICT = re.compile(r"^(?:`(?P<w1>ACCEPT|REJECT)`|(?P<w2>ACCEPT|REJECT)(?!`))[ 
 STAGE_PATH = re.compile(r"^stage-(\d+)/")
 
 
-def message_verdicts(who, kind, body):
+def message_verdicts(who, kind, body, is_agent=True):
     """The verdict a message posts: only a gatekeeper text message whose first words are one.
 
     Later lines, quotes, code blocks and error events can repeat an old verdict and never count.
     """
-    if who != "gatekeeper" or kind != "text":
+    if who != "gatekeeper" or kind != "text" or not is_agent:  # a human named gatekeeper is not the seat
         return []
     head = VERDICT.match(LEAD.sub("", body, count=1))
     if not head:
@@ -249,7 +249,7 @@ def main():
         # Only the gatekeeper can make an authoritative acceptance decision. Other seats use
         # ACCEPT and REJECT while reporting model checks or relaying a verdict, and counting
         # those messages would invent extra stage boundaries in FACTORY.md and the deck.
-        verdicts = message_verdicts(who, kind, body)
+        verdicts = message_verdicts(who, kind, body, m.get("senderType") == "Agent")
         exact_t[m["id"]] = ts(m["insertedAt"]) - t0
         events.append({
             "id": m["id"], "t": round(exact_t[m["id"]], 1), "from": who,
