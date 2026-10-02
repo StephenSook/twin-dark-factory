@@ -616,6 +616,10 @@ def run_rejection_timing_checks():
         and (same_second_start["followup"] or {}).get("sha") == "a" * 40
         and inside_reject_second["followup"] is None
         and sibling_ignored["resolved_by"] is None
+        and early["fixed_before_reject"] is True
+        and late["fixed_before_reject"] is False
+        and [m.groups() for m in tools.LINE_VERDICT.finditer("ACCEPT aaaaaaa\n\n> REJECT ccccccc old")] == [("ACCEPT", "aaaaaaa")]
+        and tools.VERDICT.match(tools.LEAD.sub("", "> REJECT ccccccc quoted", count=1)) is None
         and (linear_counted["resolved_by"] or {}).get("rev") == "6666666"
         and log_order["followup"]["sha"] == "b2" * 20
         and partial["resolved_by"] is None
@@ -636,6 +640,35 @@ def run_rejection_timing_checks():
     else:
         failures.append("rejection timing")
         print("BAD  rejection follow-up timing", early, late, same_second)
+
+
+def run_saved_log_ancestry_check():
+    """A saved log has no ancestry, so a sibling commit before the accepted one cannot cover a stage."""
+    room = export([
+        message(1, "text", "Human", "human", "dispatch"),
+        message(2, "text", sender="stephensookra/gatekeeper", content="REJECT " + "1" * 7 + " two stages"),
+        message(3, "text", sender="stephensookra/gatekeeper", content="ACCEPT " + "3" * 7 + " stage one"),
+    ])
+    for index, item in enumerate(room["messages"]):
+        item["insertedAt"] = f"2026-01-01T00:00:0{index * 2}.000Z"
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        room_path, log_path, out = tmp / "room.json", tmp / "commits.log", tmp / "floor.json"
+        room_path.write_text(json.dumps(room))
+        log_path.write_text(
+            f"{'e' * 40}\x1fStephen Sookra\x1f2026-01-01T00:00:00+00:00\x1fsetup\nmandates/builder.md\n"
+            f"{'1' * 40}\x1fbuilder\x1f2026-01-01T00:00:00+00:00\x1frejected\nstage-1/a.py\nstage-2/a.py\n"
+            f"{'2' * 40}\x1fbuilder\x1f2026-01-01T00:00:03+00:00\x1fsibling stage 2\nstage-2/a.py\n"
+            f"{'3' * 40}\x1fbuilder\x1f2026-01-01T00:00:03+00:00\x1faccepted stage 1\nstage-1/a.py\n")
+        result = subprocess.run([sys.executable, str(FLOOR_DATA), str(room_path), str(log_path), str(out)],
+                                capture_output=True, text=True)
+        floor = json.loads(out.read_text()) if out.exists() else {}
+    record = (floor.get("rejections") or [{}])[0]
+    if result.returncode == 0 and record.get("rev") == "1" * 7 and record.get("resolved_by") is None:
+        print("ok   a saved log cannot credit a sibling commit to the accepted revision")
+    else:
+        failures.append("saved log ancestry")
+        print("BAD  saved log credited an unproven commit", result.stderr[-300:], record)
 
 
 def run_floor_verdict_checks():
@@ -997,6 +1030,7 @@ run_room("text after the final report fails closed", text_after_final, False,
 run_factory_md_checks()
 run_floor_verdict_checks()
 run_rejection_timing_checks()
+run_saved_log_ancestry_check()
 run_floor_dispatch_time_check()
 run_declared_seat_check()
 run_judge_guide_checks()

@@ -16,9 +16,10 @@ MENTION = re.compile(r"@\[\[([0-9a-f-]{36})\]\]")
 # A verdict is a message whose text, after any leading @mentions, starts with the verdict word
 # and a revision (the form the mandates require). Quotes of an old verdict later in a message
 # are not verdicts.
-LEAD = re.compile(r"^(?:\s*@\[\[[0-9a-f-]{36}\]\])*[\s>*_#-]*")
+LEAD = re.compile(r"^(?:\s*@\[\[[0-9a-f-]{36}\]\])*[\s*_#-]*")
 VERDICT = re.compile(r"^`?(ACCEPT|REJECT)`?\s*`?([0-9a-f]{7,40})`?")
-LINE_VERDICT = re.compile(r"(?m)^[\s>*_#-]*`?(ACCEPT|REJECT)`?\s+`?([0-9a-f]{7,40})`?")
+# A line starting with ">" is a Markdown quote of an older verdict, never a new one.
+LINE_VERDICT = re.compile(r"(?m)^[ \t*_#-]*`?(ACCEPT|REJECT)`?\s+`?([0-9a-f]{7,40})`?")
 STAGE_PATH = re.compile(r"^stage-(\d+)/")
 
 
@@ -160,7 +161,7 @@ def rejection_record(commits, accepts, reject_t, revision, message_id, between=N
 
     matches = [index for index, commit in enumerate(commits) if commit["sha"].startswith(revision)]
     record = {"rev": revision, "t": round(reject_t, 1), "message_id": message_id, "stages": [],
-              "followup": None, "resolved_by": None}
+              "followup": None, "resolved_by": None, "fixed_before_reject": False}
     if len(matches) != 1:
         return record
     index = matches[0]
@@ -190,6 +191,11 @@ def rejection_record(commits, accepts, reject_t, revision, message_id, between=N
                 covered.update(c["stages"])
         if stages.issubset(covered):
             record["resolved_by"] = {"rev": accept_rev, "t": round(accept_t, 1), "message_id": accept_id}
+            fixes = [c for c in contained if c["by_seat"] and c["author"] in ("builder", "surface")
+                     and stages.intersection(c["stages"])]
+            # Provably earlier only when the whole Git second ends before the REJECT.
+            record["fixed_before_reject"] = (record["followup"] is None and bool(fixes)
+                                             and all(exact(c) + 1 <= reject_t for c in fixes))
             break
     return record
 
@@ -268,7 +274,9 @@ def main():
     accepts = [(t, rev) for (vd, rev), (t, _) in first.items() if vd == "ACCEPT"]
     rejects = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "REJECT"]
     accepts_with_ids = [(exact_t[mid], rev, mid) for (vd, rev), (_t, mid) in first.items() if vd == "ACCEPT"]
-    between = None
+    def between(rejected_index, accepted_index):
+        """A saved log carries no ancestry, so only the accepted commit itself is known to be in it."""
+        return [commits[accepted_index]]
     if not repo.is_file():
         def between(rejected_index, accepted_index):
             """Commits the accepted revision contains since the rejected one, by Git ancestry."""
@@ -281,6 +289,7 @@ def main():
                   for _t, revision, mid in sorted(rejects, key=lambda r: (exact_t[r[2]], r[1]))]
     changed = sum(1 for r in rejections if r["followup"])
     resolved = sum(1 for r in rejections if r["resolved_by"])
+    fixed_before = sum(1 for r in rejections if r["fixed_before_reject"])
     handoffs = [e for e in events if not e["human"] and e["to"]]
     human_after_dispatch = [e for e in events if e["human"]][1:]
 
@@ -294,7 +303,8 @@ def main():
             "handoffs": len(handoffs),
             "handoff_chars_median": sorted(e["chars"] for e in handoffs)[len(handoffs) // 2] if handoffs else 0,
             "rejects": len(rejects), "rejects_followed_by_seat_commit": changed,
-            "rejects_resolved_by_accepted_revision": resolved, "accepts": len(accepts),
+            "rejects_resolved_by_accepted_revision": resolved,
+            "rejects_fixed_before_reject": fixed_before, "accepts": len(accepts),
             "human_messages_after_dispatch": len(human_after_dispatch),
             "delivery_retries": retries, "delivery_failures": failed,
             "commits": len(commits), "seat_commits": sum(c["by_seat"] for c in commits),

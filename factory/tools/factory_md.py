@@ -132,8 +132,8 @@ def catch_stats(T):
     return (f"{rejects} rejections and {T['accepts']} acceptances over {T['handoffs']} handoffs. "
             f"{resolved} of the {rejects} rejections ended with a newer writer revision of the same stage that the "
             f"gatekeeper later accepted; {followed} had a same-stage writer commit after the REJECT itself"
-            + (", and in the rest the writer had already pushed the passing revision before the verdict arrived. "
-               if resolved == rejects and followed < rejects else ". ")
+            + (f", and in the other {rejects - followed} the fixes in the accepted revision were committed before the REJECT was posted. "
+               if resolved == rejects and 0 < rejects - followed == T.get("rejects_fixed_before_reject") else ". ")
             + f"{T['seat_commits']} of {T['commits']} commits were made by seats.")
 
 
