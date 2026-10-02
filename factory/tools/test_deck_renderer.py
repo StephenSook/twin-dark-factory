@@ -80,4 +80,36 @@ with tempfile.TemporaryDirectory() as tmp_value:
         "missing render outputs: deck.pdf",
     )
 
+expect_error(
+    "reported overlap or contrast",
+    lambda: renderer.validate_quality([{"slide": 1, "issues": ["overlap div and img.hero"]}]),
+    "slide 1: overlap div and img.hero",
+)
+renderer.validate_quality([])
+for label, text, wanted in (
+    ("em dash", "Six seats — one room", "em dash"),
+    ("curly quote", "“quoted”", "curly quote"),
+    ("schema marker", "REQUIRED_MEASURED_RESULT", "placeholder"),
+    ("example host", "https://example-preview.onrender.com", "placeholder"),
+    ("unfilled brace", "stage {N}", "placeholder"),
+    ("AI-tone word", "a robust factory", "AI-tone word 'robust'"),
+):
+    expect_error(label, lambda text=text: renderer.lint_copy(["clean slide", text]), wanted)
+renderer.lint_copy(["The builder never grades its own work.", "73/73 hidden attacks passed"])
+expect_error(
+    "image-only page",
+    lambda: renderer.validate_page_text(["slide one text", "   "]),
+    "without selectable text: 2",
+)
+renderer.validate_page_text(["a", "b"])
+urls = renderer.parse_pdf_urls("Page  Type          URL\n   12 URI           https://github.com/x/y\n")
+assert urls == {"https://github.com/x/y"}, urls
+expect_error(
+    "link lost in the PDF",
+    lambda: renderer.validate_pdf_links(urls, ["https://github.com/x/y", "https://live.example/"]),
+    "links not clickable in the PDF: https://live.example/",
+)
+renderer.validate_pdf_links(urls, ["https://github.com/x/y"])
+print("ok   deck renderer refuses overlap, low contrast, bad copy, image-only pages and dead links")
+
 print("ok   deck renderer refuses zero slides, overflow, stale outputs and page drift")

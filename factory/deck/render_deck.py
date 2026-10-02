@@ -85,6 +85,47 @@ def pdf_page_count(path):
     return parse_pdfinfo_pages(result.stdout)
 
 
+def parse_pdf_urls(output):
+    """URLs from `pdfinfo -url` rows: page, type, URL."""
+    urls = set()
+    for line in output.splitlines()[1:]:
+        parts = line.split(None, 2)
+        if len(parts) == 3 and parts[0].isdigit():
+            urls.add(parts[2].strip())
+    return urls
+
+
+def validate_pdf_links(pdf_urls, html_links):
+    missing = sorted(set(html_links) - set(pdf_urls))
+    if missing:
+        raise RenderError("links not clickable in the PDF: " + ", ".join(missing))
+
+
+def validate_page_text(page_texts):
+    blank = [str(number) for number, text in enumerate(page_texts, start=1) if not text.strip()]
+    if blank:
+        raise RenderError("PDF pages without selectable text: " + ", ".join(blank))
+
+
+def pdf_tool(arguments):
+    try:
+        result = subprocess.run(arguments, capture_output=True, text=True, check=False)
+    except FileNotFoundError as exc:
+        raise RenderError(f"{arguments[0]} is required to validate deck.pdf") from exc
+    if result.returncode != 0:
+        raise RenderError(f"{arguments[0]} failed: {result.stderr.strip() or 'no diagnostic'}")
+    return result.stdout
+
+
+def validate_pdf_content(path, page_count, html_links):
+    validate_page_text([pdf_tool(["pdftotext", "-f", str(n), "-l", str(n), str(path), "-"])
+                        for n in range(1, page_count + 1)])
+    validate_pdf_links(parse_pdf_urls(pdf_tool(["pdfinfo", "-url", str(path)])), html_links)
+
+
+LINKS_SCRIPT = "() => [...document.querySelectorAll('.slide a[href]')].map((a) => a.href)"
+
+
 def validate_pdf_page_count(actual, expected):
     if actual != expected:
         raise RenderError(f"PDF page count mismatch: expected {expected}, found {actual}")
@@ -133,6 +174,114 @@ OVERFLOW_SCRIPT = r"""
 """
 
 
+MIN_FONT_PX = 22
+MIN_CONTRAST = 4.5
+MIN_CONTRAST_LARGE = 3.0
+LARGE_TEXT_PX = 32
+
+QUALITY_SCRIPT = r"""
+([minFont, largePx]) => {
+  const parse = (value) => {
+    const m = value.match(/rgba?\(([^)]+)\)/);
+    if (!m) return null;
+    const p = m[1].split(',').map((x) => parseFloat(x));
+    return {r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1};
+  };
+  const lum = (c) => {
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b);
+  };
+  const background = (node) => {
+    for (let n = node; n; n = n.parentElement) {
+      const c = parse(getComputedStyle(n).backgroundColor);
+      if (c && c.a > 0.5) return c;
+    }
+    return {r: 255, g: 255, b: 255, a: 1};
+  };
+  const ownText = (node) => [...node.childNodes].some((c) => c.nodeType === 3 && c.textContent.trim());
+  const visible = (node) => {
+    const s = getComputedStyle(node);
+    const r = node.getBoundingClientRect();
+    return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+  };
+  const blocks = '.bignums > div, .card, .hook, .lead, .closeline, .check, .links, .seats, .caught, ' +
+                 '.evidencecopy, .limits, .appduo, .draft, img, svg, h1, .note, .url, .kicker';
+  const reports = [];
+  document.querySelectorAll('.slide').forEach((slide, index) => {
+    const issues = [];
+    for (const img of slide.querySelectorAll('img')) {
+      if (!img.complete || img.naturalWidth === 0) issues.push('broken image ' + img.getAttribute('src'));
+    }
+    for (const node of slide.querySelectorAll('*')) {
+      if (!visible(node) || !ownText(node)) continue;
+      const style = getComputedStyle(node);
+      const size = parseFloat(style.fontSize);
+      const sample = node.textContent.trim().slice(0, 40);
+      if (size < minFont) issues.push(`text ${size}px below ${minFont}px: "${sample}"`);
+      if (node instanceof SVGElement) continue;
+      const fg = parse(style.color);
+      if (!fg) continue;
+      const bg = background(node);
+      const [hi, lo] = [lum(fg), lum(bg)].sort((a, b) => b - a);
+      const ratio = (hi + 0.05) / (lo + 0.05);
+      const need = size >= largePx ? 3.0 : 4.5;
+      if (ratio < need) issues.push(`contrast ${ratio.toFixed(2)} below ${need}: "${sample}"`);
+    }
+    const items = [...slide.querySelectorAll(blocks)].filter(visible);
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const a = items[i], b = items[j];
+        if (a.contains(b) || b.contains(a)) continue;
+        const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+        const w = Math.min(ra.right, rb.right) - Math.max(ra.left, rb.left);
+        const h = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+        if (w <= 2 || h <= 2) continue;
+        const smaller = Math.min(ra.width * ra.height, rb.width * rb.height);
+        if (w * h > 0.01 * smaller) {
+          const name = (n) => n.tagName.toLowerCase() + (n.className && n.className.baseVal === undefined && n.className ? '.' + String(n.className).split(' ')[0] : '');
+          issues.push(`overlap ${name(a)} and ${name(b)}`);
+        }
+      }
+    }
+    if (issues.length) reports.push({slide: index + 1, issues});
+  });
+  return reports;
+}
+"""
+
+SLIDE_TEXT_SCRIPT = "() => [...document.querySelectorAll('.slide')].map((s) => s.innerText)"
+
+BANNED_COPY = {
+    "—": "em dash", "–": "en dash", "“": "curly quote", "”": "curly quote",
+    "‘": "curly quote", "’": "curly quote",
+}
+PLACEHOLDERS = re.compile(r"REQUIRED_|\bTODO\b|\bTBD\b|lorem ipsum|example\.(com|org)|example-|[{}]", re.I)
+AI_TONE = re.compile(
+    r"\b(delve|leverage[sd]?|robust|comprehensive|seamless(ly)?|powerful|transformative|elevate|empower|"
+    r"intuitive|cutting-edge|revolutionary|amazing|effortless(ly)?|streamline[sd]?|unlocked|ecosystem)\b", re.I)
+
+
+def lint_copy(slide_texts):
+    """Refuse dashes, curly quotes, placeholders and AI-tone words in any slide's visible text."""
+    problems = []
+    for number, text in enumerate(slide_texts, start=1):
+        for char, label in BANNED_COPY.items():
+            if char in text:
+                problems.append(f"slide {number}: {label}")
+        for match in PLACEHOLDERS.finditer(text):
+            problems.append(f"slide {number}: placeholder {match.group(0)!r}")
+        for match in AI_TONE.finditer(text):
+            problems.append(f"slide {number}: AI-tone word {match.group(0)!r}")
+    if problems:
+        raise RenderError("copy problems: " + "; ".join(sorted(set(problems))))
+
+
+def validate_quality(reports):
+    if reports:
+        detail = "; ".join(f"slide {r['slide']}: " + ", ".join(r["issues"]) for r in reports)
+        raise RenderError("visual quality problems: " + detail)
+
+
 ASSET_WAIT_SCRIPT = r"""
 async () => {
   await document.fonts.ready;
@@ -171,6 +320,9 @@ def render(deck_dir):
             expected = expected_slide_names(slide_count)
             validate_slide_inventory(deck_dir, slide_count, require_complete=False)
             validate_overflow(page.evaluate(OVERFLOW_SCRIPT))
+            validate_quality(page.evaluate(QUALITY_SCRIPT, [MIN_FONT_PX, LARGE_TEXT_PX]))
+            lint_copy(page.evaluate(SLIDE_TEXT_SCRIPT))
+            html_links = page.evaluate(LINKS_SCRIPT)
 
             with tempfile.TemporaryDirectory(prefix=".deck-render-", dir=deck_dir) as temp_value:
                 temp = pathlib.Path(temp_value)
@@ -188,6 +340,7 @@ def render(deck_dir):
                 outputs = [pdf, *(temp / name for name in sorted(expected))]
                 validate_outputs(outputs)
                 validate_pdf_page_count(pdf_page_count(pdf), slide_count)
+                validate_pdf_content(pdf, slide_count, html_links)
 
                 os.replace(pdf, deck_dir / "deck.pdf")
                 for name in sorted(expected):
