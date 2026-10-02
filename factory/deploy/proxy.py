@@ -164,7 +164,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         for k, v in (extra or {}).items():
             self.send_header(k, v)
         self.end_headers()
-        self.wfile.write(data)
+        if self.command != "HEAD":  # a HEAD response carries headers only
+            self.wfile.write(data)
 
     def handle_any(self):
         # The request can forge forwarding headers. Rate-limit on the socket peer instead.
@@ -206,7 +207,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         for k, v in r.getheaders():
             if k.lower() not in HOP and k.lower() not in ("date", "server"):
                 self.send_header(k, v)
-        self.send_header("Content-Length", str(len(data)))
+        # A HEAD response has no body but keeps the length the service reported for GET.
+        upstream_length = r.getheader("Content-Length")
+        head_length = self.command == "HEAD" and upstream_length and upstream_length.isascii() \
+            and upstream_length.isdigit()
+        self.send_header("Content-Length", upstream_length if head_length else str(len(data)))
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(data)

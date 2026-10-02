@@ -77,6 +77,13 @@ class FakeService(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def do_HEAD(self):
+        data = json.dumps({"service": self.path}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+
     do_GET = do_POST = answer
 
 
@@ -135,6 +142,12 @@ for label, first in (
     codes = statuses(data)
     check(f"{label}: the proxy answers once and closes, so no leftover bytes become a request",
           len(codes) == 1 and codes[0] != b"501" and b"Connection: close" in data and b'"service"' not in data)
+
+data = exchange(b"HEAD /__demo/status HTTP/1.1\r\nHost: demo\r\n\r\n")
+check("a HEAD reply from the proxy carries no body", data.endswith(b"\r\n\r\n") and b"reset_every_seconds" not in data)
+data = exchange(b"HEAD /me HTTP/1.1\r\nHost: demo\r\nConnection: close\r\n\r\n")
+check("a forwarded HEAD keeps the service's length and sends no body",
+      b"Content-Length: 18" in data and data.endswith(b"\r\n\r\n"))
 
 data = exchange(b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: 2\r\n\r\n{}"
                 b"GET /health HTTP/1.1\r\nHost: demo\r\nConnection: close\r\n\r\n")
