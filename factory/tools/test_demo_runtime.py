@@ -45,7 +45,8 @@ check("workflow does not send image argv through GITHUB_OUTPUT", "GITHUB_OUTPUT"
 check("workflow passes only base64 argv into the build shell", '--build-arg APP_ARGV_B64="$app_argv_b64"' in workflow)
 
 dockerfile = DOCKERFILE.read_text()
-check("wrapper replaces an inherited image entrypoint", 'ENTRYPOINT ["python3", "/demo/proxy.py"]' in dockerfile)
+check("wrapper replaces an inherited image entrypoint with its own runtime", 'ENTRYPOINT ["/opt/demo-python/bin/python3", "/demo/proxy.py"]' in dockerfile)
+check("front-door runtime is pinned by checksum", "PBS_SHA256=269b2c99e4db15b242bf01832f4fea1e8f1a664f273cff519393f296e9820b41" in dockerfile and "checksum mismatch" in dockerfile)
 check("wrapper clears an inherited image command", "CMD []" in dockerfile)
 
 proxy_text = PROXY_PATH.read_text()
