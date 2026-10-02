@@ -618,8 +618,13 @@ def run_rejection_timing_checks():
         and sibling_ignored["resolved_by"] is None
         and early["fixed_before_reject"] is True
         and late["fixed_before_reject"] is False
-        and [m.groups() for m in tools.LINE_VERDICT.finditer("ACCEPT aaaaaaa\n\n> REJECT ccccccc old")] == [("ACCEPT", "aaaaaaa")]
-        and tools.VERDICT.match(tools.LEAD.sub("", "> REJECT ccccccc quoted", count=1)) is None
+        and tools.message_verdicts("gatekeeper", "text", "ACCEPT aaaaaaa\n\n> REJECT ccccccc old") == [
+            {"verdict": "ACCEPT", "rev": "aaaaaaa"}]
+        and tools.message_verdicts("gatekeeper", "text", "Prior verdict follows:\nREJECT ccccccc stale") == []
+        and tools.message_verdicts("gatekeeper", "text", "```\nREJECT ccccccc\n```") == []
+        and tools.message_verdicts("gatekeeper", "text", "> REJECT ccccccc quoted") == []
+        and tools.message_verdicts("gatekeeper", "error", "REJECT deadbee transport failed") == []
+        and tools.message_verdicts("builder", "text", "REJECT ccccccc relayed") == []
         and (linear_counted["resolved_by"] or {}).get("rev") == "6666666"
         and log_order["followup"]["sha"] == "b2" * 20
         and partial["resolved_by"] is None

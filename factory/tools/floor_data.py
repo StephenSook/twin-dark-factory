@@ -18,9 +18,18 @@ MENTION = re.compile(r"@\[\[([0-9a-f-]{36})\]\]")
 # are not verdicts.
 LEAD = re.compile(r"^(?:\s*@\[\[[0-9a-f-]{36}\]\])*[\s*_#-]*")
 VERDICT = re.compile(r"^`?(ACCEPT|REJECT)`?\s*`?([0-9a-f]{7,40})`?")
-# A line starting with ">" is a Markdown quote of an older verdict, never a new one.
-LINE_VERDICT = re.compile(r"(?m)^[ \t*_#-]*`?(ACCEPT|REJECT)`?\s+`?([0-9a-f]{7,40})`?")
 STAGE_PATH = re.compile(r"^stage-(\d+)/")
+
+
+def message_verdicts(who, kind, body):
+    """The verdict a message posts: only a gatekeeper text message whose first words are one.
+
+    Later lines, quotes, code blocks and error events can repeat an old verdict and never count.
+    """
+    if who != "gatekeeper" or kind != "text":
+        return []
+    head = VERDICT.match(LEAD.sub("", body, count=1))
+    return [{"verdict": head.group(1), "rev": head.group(2)[:7]}] if head else []
 
 
 def ts(s: str) -> float:
@@ -235,13 +244,7 @@ def main():
         # Only the gatekeeper can make an authoritative acceptance decision. Other seats use
         # ACCEPT and REJECT while reporting model checks or relaying a verdict, and counting
         # those messages would invent extra stage boundaries in FACTORY.md and the deck.
-        found = []
-        if who == "gatekeeper":
-            head = VERDICT.match(LEAD.sub("", body, count=1))
-            if head:
-                found.append(head.groups())
-            found += LINE_VERDICT.findall(body)
-        verdicts = [{"verdict": v, "rev": rev[:7]} for v, rev in dict.fromkeys(found)]
+        verdicts = message_verdicts(who, kind, body)
         exact_t[m["id"]] = ts(m["insertedAt"]) - t0
         events.append({
             "id": m["id"], "t": round(exact_t[m["id"]], 1), "from": who,
