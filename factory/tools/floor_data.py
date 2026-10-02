@@ -160,7 +160,7 @@ def gap_phrase(seconds):
     return "1 minute" if minutes == 1 else f"{minutes} minutes"
 
 
-def rejection_record(commits, accepts, reject_t, revision, message_id, between=None):
+def rejection_record(commits, accepts, reject_t, revision, message_id, between=None, order=None):
     """What happened after one REJECT: the next writer commit in time and the accepted revision.
 
     `followup` is the earliest writer commit on a rejected stage made after the REJECT message.
@@ -189,8 +189,10 @@ def rejection_record(commits, accepts, reject_t, revision, message_id, between=N
     if followup:
         record["followup"] = {"sha": followup["sha"], "t": round(exact(followup), 1),
                               "author": followup["author"], "subject": followup["subject"]}
-    for accept_t, accept_rev, accept_id in sorted(accepts):
-        if accept_t <= reject_t:
+    order = order or {}
+    rank = lambda t, mid: (t, order.get(mid, 0))
+    for accept_t, accept_rev, accept_id in sorted(accepts, key=lambda a: rank(a[0], a[2])):
+        if rank(accept_t, accept_id) <= rank(reject_t, message_id):
             continue
         hits = [j for j in range(index + 1, len(commits)) if commits[j]["sha"].startswith(accept_rev)]
         accepted = commits[hits[0]] if len(hits) == 1 else None
@@ -234,6 +236,7 @@ def main():
     events, per_seat = [], {n: {"text": 0, "tool_call": 0, "thought": 0, "error": 0} for n in seats.values()}
     exact_t = {}  # unrounded message times for ordering; events publish them rounded
     full_revs = {}  # each event's revisions exactly as posted, for de-duplication by commit
+    order = {}
     retries = failed = 0
     for m in msgs:
         kind = m["messageType"]
@@ -256,7 +259,8 @@ def main():
         verdicts = found
         # Export order breaks ties between equal timestamps; the offset stays far below 1 ms.
         relative = ts(m["insertedAt"]) - t0
-        exact_t[m["id"]] = relative + len(exact_t) * 1e-8
+        order[m["id"]] = len(order)  # export order, which breaks ties between equal timestamps
+        exact_t[m["id"]] = relative
         events.append({
             "id": m["id"], "t": round(relative, 1), "from": who,
             "human": m["senderId"] in humans, "kind": kind, "to": sorted(set(to)),
@@ -288,7 +292,8 @@ def main():
     first = {}
     for e in events:
         for v, full in zip(e["verdicts"], full_revs.get(e["id"], [])):
-            first.setdefault((v["verdict"], commit_key(full)), (e["t"], e["id"]))
+            v["commit"] = commit_key(full)  # consumers de-duplicate on this, never on the short rev
+            first.setdefault((v["verdict"], v["commit"]), (e["t"], e["id"]))
     accepts = [(t, rev) for (vd, rev), (t, _) in first.items() if vd == "ACCEPT"]
     rejects = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "REJECT"]
     accepts_with_ids = [(exact_t[mid], rev, mid) for (vd, rev), (_t, mid) in first.items() if vd == "ACCEPT"]
@@ -303,8 +308,8 @@ def main():
                  f"{commits[rejected_index]['sha']}..{commits[accepted_index]['sha']}"],
                 capture_output=True, text=True, check=True).stdout.split()
             return [c for c in commits if c["sha"] in set(listed)]
-    rejections = [rejection_record(commits, accepts_with_ids, exact_t[mid], revision, mid, between)
-                  for _t, revision, mid in sorted(rejects, key=lambda r: (exact_t[r[2]], r[1]))]
+    rejections = [rejection_record(commits, accepts_with_ids, exact_t[mid], revision, mid, between, order)
+                  for _t, revision, mid in sorted(rejects, key=lambda r: (exact_t[r[2]], order[r[2]]))]
     changed = sum(1 for r in rejections if r["followup"])
     resolved = sum(1 for r in rejections if r["resolved_by"])
     fixed_before = sum(1 for r in rejections if r["fixed_before_reject"])

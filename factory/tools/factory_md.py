@@ -89,7 +89,7 @@ def verdicts(floor):
     seen = set()
     for e in floor["events"]:
         for v in e["verdicts"]:
-            key = (v["verdict"], v["rev"])
+            key = (v["verdict"], v.get("commit", v["rev"]))
             if key in seen:
                 continue
             seen.add(key)
@@ -250,8 +250,8 @@ def main():
     accepts, seen = [], set()
     for e in floor["events"]:
         for v in e["verdicts"]:
-            if v["verdict"] == "ACCEPT" and v["rev"] not in seen:
-                seen.add(v["rev"])
+            if v["verdict"] == "ACCEPT" and v.get("commit", v["rev"]) not in seen:
+                seen.add(v.get("commit", v["rev"]))
                 accepts.append((e, v["rev"]))
     claims = need(facts, "stage_claims", a.draft)
     generic = need(facts, "genericity", a.draft)

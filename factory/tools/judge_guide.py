@@ -78,8 +78,8 @@ def main():
     seen, accepts = set(), []
     for e in ev:
         for v in e["verdicts"]:
-            if v["verdict"] == "ACCEPT" and v["rev"] not in seen:
-                seen.add(v["rev"])
+            if v["verdict"] == "ACCEPT" and v.get("commit", v["rev"]) not in seen:
+                seen.add(v.get("commit", v["rev"]))
                 accepts.append((e, v["rev"]))
     final = next((e for e in reversed(ev) if e["from"] == coordinator and "FINAL REPORT" in e["preview"]), None)
     show = "jq '.messages[] | select(.id==\"{}\") | .content' room.json"

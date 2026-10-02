@@ -752,11 +752,20 @@ def run_floor_dedup_and_tie_checks():
         (repo / "stage-1" / "a.py").write_text("2\n")
         git("commit", "-q", "-am", "fixed", when="2026-01-01T00:00:02+00:00")
         fixed = git("rev-parse", "HEAD").stdout.strip()
+        (repo / "stage-1" / "a.py").write_text("3\n")
+        git("commit", "-q", "-am", "same second", when="2026-01-01T00:00:05+00:00")
+        boundary = git("rev-parse", "HEAD").stdout.strip()
         tie = run(room_with([f"REJECT {rejected[:7]} bad", f"ACCEPT {fixed[:7]} good"], same_time=True), repo)
+    deck_spec = importlib.util.spec_from_file_location("deck_dedup", DECK)
+    deck_module = importlib.util.module_from_spec(deck_spec)
+    deck_spec.loader.exec_module(deck_module)
+    distinct_caption = deck_module.timeline(distinct) if "events" in distinct else ""
     good = (
         (distinct.get("totals") or {}).get("rejects") == 2
         and (same.get("totals") or {}).get("rejects") == 1
         and ((tie.get("rejections") or [{}])[0].get("resolved_by") or {}).get("rev") == fixed[:7]
+        and ((tie.get("rejections") or [{}])[0].get("followup") or {}).get("sha") == boundary
+        and "2 rejections" in distinct_caption
     )
     if good:
         print("ok   verdicts de-duplicate by commit and equal timestamps keep export order")

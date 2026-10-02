@@ -52,7 +52,7 @@ def timeline(floor, width=1600):
     seen, marks = set(), []
     for e in floor["events"]:
         for v in e["verdicts"]:
-            key = (v["verdict"], v["rev"])
+            key = (v["verdict"], v.get("commit", v["rev"]))
             if key in seen:
                 continue
             seen.add(key)
