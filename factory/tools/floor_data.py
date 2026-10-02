@@ -175,8 +175,8 @@ def rejection_record(commits, accepts, reject_t, revision, message_id):
         if accept_t <= reject_t:
             continue
         hits = [j for j in range(index + 1, len(commits)) if commits[j]["sha"].startswith(accept_rev)]
-        if len(hits) != 1:
-            continue
+        if len(hits) != 1 or not stages.intersection(commits[hits[0]]["stages"]):
+            continue  # the accepted revision itself must be on a rejected stage
         covered = set()
         for c in commits[index + 1:hits[0] + 1]:
             if c["by_seat"] and c["author"] in ("builder", "surface"):
@@ -262,7 +262,7 @@ def main():
     rejects = [(t, rev, mid) for (vd, rev), (t, mid) in first.items() if vd == "REJECT"]
     accepts_with_ids = [(exact_t[mid], rev, mid) for (vd, rev), (_t, mid) in first.items() if vd == "ACCEPT"]
     rejections = [rejection_record(commits, accepts_with_ids, exact_t[mid], revision, mid)
-                  for _t, revision, mid in sorted(rejects)]
+                  for _t, revision, mid in sorted(rejects, key=lambda r: (exact_t[r[2]], r[1]))]
     changed = sum(1 for r in rejections if r["followup"])
     resolved = sum(1 for r in rejections if r["resolved_by"])
     handoffs = [e for e in events if not e["human"] and e["to"]]

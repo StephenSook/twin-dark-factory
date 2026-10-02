@@ -565,7 +565,19 @@ def run_rejection_timing_checks():
         [(400.0, "2222222", "accept-id")], 300.0, "ccccccc", "reject-id")
     unclamped = tools.rejection_record(
         [commits[0], dict(commits[1], t=600.0, t_exact=3600.0)], [], 300.0, "ccccccc", "reject-id")
+    off_stage_accept = tools.rejection_record(
+        [commits[0], dict(commits[1], sha="1" * 40, t=310.0, stages=[1]),
+         dict(commits[1], sha="2" * 40, t=320.0, stages=[2])],
+        [(400.0, "2222222", "accept-id")], 300.0, "ccccccc", "reject-id")
     missing_followed = {"rejections": [], "totals": {"rejects": 0, "rejects_resolved_by_accepted_revision": 0}}
+    readme_spec = importlib.util.spec_from_file_location("result_readme_guard", FLOOR_DATA.with_name("result_readme.py"))
+    readme = importlib.util.module_from_spec(readme_spec)
+    readme_spec.loader.exec_module(readme)
+    try:
+        readme.build(missing_followed, {"stage_claims": {}})
+        readme_refused = False
+    except SystemExit as error:
+        readme_refused = "predates rejection records" in str(error)
     try:
         tools.featured_rejection(missing_followed, {})
         partial_floor_refused = False
@@ -588,6 +600,8 @@ def run_rejection_timing_checks():
         and partial["resolved_by"] is None
         and old_floor_refused
         and partial_floor_refused
+        and off_stage_accept["resolved_by"] is None
+        and readme_refused
         and (cumulative["resolved_by"] or {}).get("rev") == "2222222"
         and unclamped["followup"]["t"] == 3600.0
         and tools.gap_phrase(0) == "under a minute"

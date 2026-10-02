@@ -19,7 +19,8 @@ def duration(seconds):
 
 
 def build(floor, facts):
-    if not isinstance(floor.get("rejections"), list) or "rejects_resolved_by_accepted_revision" not in (floor.get("totals") or {}):
+    needed = ("rejects_resolved_by_accepted_revision", "rejects_followed_by_seat_commit")
+    if not isinstance(floor.get("rejections"), list) or any(key not in (floor.get("totals") or {}) for key in needed):
         sys.exit("floor.json predates rejection records; regenerate it with tools/floor_data.py")
     totals = floor.get("totals") or {}
     stages = need(facts, "stage_claims")
