@@ -121,6 +121,11 @@ for label, first in (
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length : %d\r\n\r\n" % len(smuggled) + smuggled),
     ("a nested-encoded backslash route to the test endpoints",
      b"GET /_test%255Creset HTTP/1.1\r\nHost: demo\r\n\r\n"),
+    ("an empty Transfer-Encoding field hiding a chunked one",
+     b"POST /me HTTP/1.1\r\nHost: demo\r\nTransfer-Encoding:\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n"
+     b"20\r\n" + smuggled + b"\r\n0\r\n\r\n"),
+    ("a Content-Length of non-ASCII digits",
+     b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: \xb2\r\n\r\nx"),
     ("a Content-Length too long to convert",
      b"POST /me HTTP/1.1\r\nHost: demo\r\nContent-Length: " + b"9" * 5000 + b"\r\n\r\n"),
 ):

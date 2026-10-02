@@ -184,12 +184,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if blocked(path):
             return self.reply(404, {"error": "not_found", "detail": "test endpoints are closed on the public demo"})
         target = path + ("?" + query if query else "")
-        if self.headers.get("Transfer-Encoding"):
+        if self.headers.get_all("Transfer-Encoding") is not None:
             # The proxy frames bodies by Content-Length only; a chunked body would be left unread.
             return self.reply(411, {"error": "length_required"})
         lengths = self.headers.get_all("Content-Length") or ["0"]
         raw_length = lengths[0].strip()
-        if len(lengths) != 1 or not raw_length.isdigit() or len(raw_length) > 12:
+        if len(lengths) != 1 or re.fullmatch(r"[0-9]{1,12}", raw_length) is None:
             return self.reply(400, {"error": "bad_content_length"})
         length = int(raw_length)
         if length > MAX_BODY:
