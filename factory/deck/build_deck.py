@@ -352,7 +352,9 @@ def build(floor, sessions_path, facts, draft):
         f"Each folder claims its own stage in the organizers' isolated run.",
         '<div class="bignums">' + "".join(f'<div><b>{esc(counts.get(str(s), s))}</b><span>stage {i + 1}: {esc(v)}'
                                           + (" (provided checks)" if counts else "") + '</span></div>'
-                                          for i, (s, v) in enumerate(stages.items())) + "</div>"))
+                                          for i, (s, v) in enumerate(stages.items())) + "</div>"
+        + (f'<p class="note">{esc(facts["shipped_share"].replace("`", ""))}</p>'
+           if isinstance(facts.get("shipped_share"), str) else "")))
     app_slide = optional_app_slide(facts)
     if app_slide:
         slides.append(app_slide)
