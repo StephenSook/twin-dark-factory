@@ -72,7 +72,7 @@ def timeline(floor, width=1600):
         out.append(f'<text x="{x(t):.0f}" y="{cy + 9}" text-anchor="middle" class="dot">{"R" if up else "A"}</text>')
         if not up:
             out.append(f'<text x="{x(t):.0f}" y="{cy + 64}" text-anchor="middle" class="small">{esc(fmt_t(t))}</text>')
-    out.append(f'<text x="60" y="60" class="small">REJECT above the line, ACCEPT below. {len([m for m in marks if m[1] == "REJECT"])} rejections, {len([m for m in marks if m[1] == "ACCEPT"])} accepts, {esc(fmt_t(dur))} of work.</text>')
+    out.append(f'<text x="60" y="60" class="small">REJECT above the line, ACCEPT below. {len([m for m in marks if m[1] == "REJECT"])} rejections, {len([m for m in marks if m[1] == "ACCEPT"])} accepts, {esc(fmt_t(dur))} from dispatch to the last room message.</text>')
     out.append("</svg>")
     return "".join(out)
 
