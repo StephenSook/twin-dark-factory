@@ -270,6 +270,8 @@ def title_claim(facts, totals):
         autonomy = f"This development run used one dispatch plus {human} human recovery messages."
     elif development:
         autonomy = "This development run used one dispatch and no later human input."
+    elif "dispatch" in core:
+        return core  # the one-line claim already states the dispatch and the human input
     else:
         autonomy = "The judged run used one dispatch and no later human input."
     return f"{core} {autonomy}"
