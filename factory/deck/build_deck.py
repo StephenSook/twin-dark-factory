@@ -231,7 +231,7 @@ def teamwork_slide(floor, fam):
 
 def room_moment_slide(facts):
     """A real screenshot of a handoff in the BAND room, captioned from the facts file."""
-    shot = art("room-moment", "appshot")
+    shot = art("room-moment", "appshot roomshot")
     if not shot:
         return ""
     headline, caption = facts.get("room_headline"), facts.get("room_caption")
@@ -326,6 +326,19 @@ def build(floor, sessions_path, facts, draft):
     if moment:
         slides.append(moment)
     slides.append(caught_slide(floor, facts))
+    green = facts.get("green_reject_numbers")
+    if isinstance(green, dict) and isinstance(facts.get("green_reject"), str):
+        slides.append(slide(
+            "It refused a revision the organizers' checks passed, and the fix was measurable.",
+            f'<div class="bignums"><div><b>{esc(green["provided"])}</b><span>provided checks passed</span></div>'
+            f'<div><b>{esc(green["before"])}</b><span>export timed out (limit 10 s)</span></div>'
+            f'<div><b>{esc(green["after"])}</b><span>export after the fix</span></div></div>'
+            f'<p class="note">{esc(facts["green_reject"].replace("`", ""))}</p>',
+            kicker="Refused while green"))
+    if isinstance(facts.get("seat_paths"), str):
+        slides.append(slide(
+            "Git proves the separation: checkers never wrote product code, writers never wrote checks.",
+            f'<div class="evidencecopy">{esc(facts["seat_paths"].replace("`", ""))}</div>', kicker="Writers and checkers never cross"))
     slides.append(slide(
         rejection_headline,
         timeline(floor)))
@@ -412,6 +425,7 @@ svg .dot {{ font: 800 26px Figtree, sans-serif; fill: #fff; }}
 code {{ font-family: 'JetBrains Mono', monospace; background: #fff; border: 2px solid {INK}; border-radius: 10px; padding: 4px 12px; font-size: 26px; }}
 img.hero {{ position: absolute; right: 120px; bottom: 30px; width: 400px; }}
 img.corner {{ position: absolute; right: 150px; bottom: 90px; width: 440px; }}
+img.roomshot {{ max-height: 560px !important; }}
 img.appshot {{ display: block; max-width: 1500px; max-height: 670px; margin: 0 auto; border: 4px solid {INK}; border-radius: 28px; box-shadow: 16px 18px 0 {BUTTER}; }}
 .appcaption {{ margin: 34px auto 0; text-align: center; }}
 .evidencecopy {{ background: #fff; border: 4px solid {INK}; border-radius: 28px; padding: 56px; font-size: 44px; line-height: 1.4; max-width: 1500px; }}
