@@ -314,7 +314,10 @@ def build(floor, sessions_path, facts, draft):
         f'<div class="bignums"><div><b>{len(stages)}/4</b><span>stages reached</span></div>'
         f'<div><b>{T["human_messages_after_dispatch"]}</b><span>human messages after dispatch</span></div>'
         f'<div><b>{followed}</b><span>{esc(followed_label)}</span></div></div>'
-        f'<p class="url">{esc(facts.get("live_url", ""))}</p>' + art("hero-factory", "hero"), "title"))
+        f'<p class="url">{esc(facts.get("live_url", ""))}'
+        + (f'<br>demo login: {esc(facts["demo_logins"][0])} / {esc(facts["demo_password"])}'
+           if facts.get("demo_logins") and facts.get("demo_password") else "")
+        + '</p>' + art("hero-factory", "hero"), "title"))
     seats = seat_grid(costs, facts.get("outside_band_families"))
     slides.append(slide(
         "Independent seats check the writers; the seat that writes the code never accepts it.",
