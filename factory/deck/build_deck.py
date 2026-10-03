@@ -11,6 +11,7 @@ import collections
 import html
 import json
 import pathlib
+import re
 import sys
 
 INK, BODY, PAGE = "#2B2270", "#0B0B0F", "#FFF8E7"
@@ -345,9 +346,12 @@ def build(floor, sessions_path, facts, draft):
     team = teamwork_slide(floor, fam)
     if team:
         slides.append(team)
+    # Measured counts when the provided_checks fact exists (built from a fresh-clone harness run), else stage numbers.
+    counts = {m[2]: f"{m[0]}/{m[1]}" for m in re.findall(r"(\d+) of (\d+) \(stage (\d)\)", facts.get("provided_checks") or "")}
     slides.append(slide(
         f"Each folder claims its own stage in the organizers' isolated run.",
-        '<div class="bignums">' + "".join(f'<div><b>{esc(s)}</b><span>stage {i + 1}: {esc(v)}</span></div>'
+        '<div class="bignums">' + "".join(f'<div><b>{esc(counts.get(str(s), s))}</b><span>stage {i + 1}: {esc(v)}'
+                                          + (" (provided checks)" if counts else "") + '</span></div>'
                                           for i, (s, v) in enumerate(stages.items())) + "</div>"))
     app_slide = optional_app_slide(facts)
     if app_slide:
@@ -383,13 +387,15 @@ def build(floor, sessions_path, facts, draft):
             '<ul class="limits">' + "".join(f"<li>{esc(x)}</li>" for x in facts["limits"]) + "</ul>"))
     links = "".join(
         f'<a class="link" href="{esc(href(facts[key]))}"><span>{esc(label)}</span><b>{esc(facts[key])}</b></a>'
-        for key, label in (("live_url", "Live app"), ("floor_url", "Factory Floor replay"), ("repo_url", "Repository"))
+        for key, label in (("live_url", "Live app"), ("floor_url", "Factory Floor replay"), ("repo_url", "Repository"),
+                           ("video_url", "Demo film"))
         if facts.get(key))
     close = facts.get("close_line")
     slides.append(slide(
         "Check every number yourself.",
         (f'<div class="links">{links}</div>' if links else "")
-        + '<ul class="check">' + "".join(f"<li><code>{esc(c)}</code></li>" for c in facts["check_commands"]) + "</ul>"
+        + '<ul class="check">' + "".join(f"<li><code>{esc(line)}</code></li>"
+                                         for c in facts["check_commands"] for line in c.split("\n")) + "</ul>"
         + (f'<p class="closeline">{esc(close)}</p>' if close else ""), "close"))
     stamp = f'<div class="draft">{esc(draft)}</div>' if draft else ""
     return (PAGE_HEAD + "".join(s.replace("</section>", stamp + "</section>") for s in slides) + "</body></html>")
